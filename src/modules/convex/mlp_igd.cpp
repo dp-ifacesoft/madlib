@@ -81,7 +81,7 @@ mlp_igd_transition::run(AnyType &args) {
             // configuration parameters and initialization
             // this is run only once (first iteration, first tuple)
             ArrayHandle<double> numbersOfUnits = args[4].getAs<ArrayHandle<double> >();
-            int numberOfStages = numbersOfUnits.size() - 1;
+            uint16_t numberOfStages = static_cast<uint16_t>(numbersOfUnits.size() - 1);
 
             state.allocate(*this, numberOfStages,
                            reinterpret_cast<const double *>(numbersOfUnits.ptr()));
