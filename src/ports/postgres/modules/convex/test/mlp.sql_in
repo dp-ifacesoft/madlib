@@ -28,6 +28,7 @@
 -- Classification
 
 
+<<<<<<< HEAD
 SELECT setseed(0.6);
 DROP TABLE IF EXISTS iris_data, iris_test CASCADE;
 CREATE TABLE iris_data(
@@ -376,13 +377,6 @@ SELECT mlp_classification(
 );
 
 
-SELECT assert(
-    -- Loss will improve much more if more iterations are run
-    loss < 0.2,
-    'MLP: Loss is too high (> 0.2). Wrong result.'
-) FROM mlp_class
-WHERE g=1;
-
 DROP TABLE IF EXISTS mlp_prediction;
 DROP TABLE IF EXISTS mlp_prediction_output;
 -- See prediction accuracy for training data
@@ -395,43 +389,12 @@ SELECT mlp_predict(
 
 -- Sum over the probabilities where the prediction is correct
 -- If the predictions were perfect, the score would be 150
-SELECT assert(
-    score > 140,
-    'MLP: Score is too low (< 140). Wrong result.'
-) FROM(
-SELECT SUM(
-mlp_prediction_output.estimated_prob_1*(iris_data.class=1)::INT+
-mlp_prediction_output.estimated_prob_2*(iris_data.class=2)::INT+
-mlp_prediction_output.estimated_prob_3*(iris_data.class=3)::INT
-) AS score
-FROM mlp_prediction_output INNER JOIN iris_data ON iris_data.id=mlp_prediction_output.id
-WHERE iris_data.g=2)q;
-
-
 SELECT mlp_predict(
     'mlp_class',
     'iris_data',
     'id',
     'mlp_prediction',
     'response');
-
-SELECT * FROM mlp_prediction;
-SELECT assert(
-    COUNT(*)/150.0 > 0.95,
-    'MLP: Accuracy is too low (< 95%). Wrong result.'
-) FROM
-    (SELECT iris_data.class AS actual, mlp_prediction.estimated_class as estimated
-    FROM mlp_prediction
-    INNER JOIN iris_data
-    ON iris_data.id=mlp_prediction.id
-    WHERE iris_data.g=1
-    ) q
-WHERE q.actual=q.estimated;
-
-DROP TABLE IF EXISTS mlp_prediction;
-DROP TABLE IF EXISTS mlp_prediction_output;
--- Regression
-
 
 DROP TABLE IF EXISTS lin_housing_wi CASCADE;
 CREATE TABLE lin_housing_wi (id serial, x float8[], grp_by_col int, y float8);
@@ -944,11 +907,66 @@ COPY lin_housing_wi (x, grp_by_col, y) FROM STDIN NULL '?' DELIMITER '|';
 {1,0.04741,0.00,11.930,0,0.5730,6.0300,80.80,2.5050,1,273.0,21.00,396.90,7.88} | 2 | 11.90
 \.
 
+DROP TABLE IF EXISTS lin_housing_normalized;
+CREATE TABLE lin_housing_normalized AS
+SELECT id, utils_normalize_data(x, (f).mean, (f).std) AS x, grp_by_col, y
+FROM lin_housing_wi,
+    (SELECT __utils_var_scales_result(
+                    utils_var_scales(x, 14)) as f
+    FROM lin_housing_wi) q;
+
+DROP TABLE IF EXISTS lin_housing_batch;
+CREATE TABLE lin_housing_batch AS
+SELECT t as id,
+       matrix_agg(x order by id) as x,
+       array_agg(y order by id) as y
+FROM
+    (SELECT id % 10 as t, * FROM lin_housing_normalized) q
+GROUP BY t;
 
 DROP TABLE IF EXISTS mlp_regress;
 DROP TABLE IF EXISTS mlp_regress_summary;
 DROP TABLE IF EXISTS mlp_regress_standardization;
 SELECT setseed(0);
+SELECT mlp_regression(
+    'lin_housing_batch',           -- Source table
+    'mlp_regress',              -- Desination table
+    'x',                        -- Input features
+    'y',                        -- Dependent variable
+    ARRAY[10],                 -- Number of units per layer
+    'learning_rate_init=0.025,
+    learning_rate_policy=step,
+    lambda=0.001,
+    iterations_per_step=50,
+    n_iterations=30,
+    tolerance=0,
+    batch_size=25, n_epochs=10',
+    'sigmoid',
+    '',
+    False,
+    TRUE);
+
+
+DROP TABLE IF EXISTS mlp_prediction_regress;
+SELECT mlp_predict(
+    'mlp_regress',
+    'lin_housing_normalized',
+    'id',
+    'mlp_prediction_regress',
+    'output');
+
+SELECT p.estimated_y[1], s.y
+FROM mlp_prediction_regress AS p JOIN lin_housing_normalized AS s
+USING (id)
+LIMIT 20;
+
+SELECT sqrt(SUM(pow(p.estimated_y[1] - s.y, 2.0))/count(*))
+FROM mlp_prediction_regress AS p JOIN lin_housing_normalized AS s
+USING (id);
+
+DROP TABLE IF EXISTS mlp_regress, mlp_regress_summary, mlp_regress_standardization;
+
+-- SELECT setseed(0);
 SELECT mlp_regression(
     'lin_housing_wi',           -- Source table
     'mlp_regress',              -- Desination table
@@ -981,13 +999,6 @@ SELECT mlp_regression(
     False,
     'grp_by_col');
 
-
-SELECT assert(
-    loss < 10,
-    'MLP: Loss is too high (> 10). Wrong result.'
-) FROM mlp_regress;
-
-
 DROP TABLE IF EXISTS mlp_prediction_regress;
 SELECT mlp_predict(
     'mlp_regress',
@@ -995,21 +1006,8 @@ SELECT mlp_predict(
     'id',
     'mlp_prediction_regress',
     'output');
-SELECT assert(
-    0.5*SUM(pow(mlp_prediction_regress.estimated_y-lin_housing_wi.y,2.0)
-            )/245 < 10,
-    'MLP: Predict MSE is too high (> 10) for group 1. Wrong result'
-)
-FROM mlp_prediction_regress JOIN lin_housing_wi
-ON mlp_prediction_regress.id = lin_housing_wi.id
-WHERE lin_housing_wi.grp_by_col=1;
 
-SELECT assert(
-    0.5*SUM(pow(mlp_prediction_regress.estimated_y-lin_housing_wi.y,2.0)
-            )/261 < 10,
-    'MLP: Predict MSE is too high (> 10) for group 2. Wrong result'
-)
+SELECT sqrt(SUM(pow(mlp_prediction_regress.estimated_y-lin_housing_wi.y,2.0))/
+            count(*))
 FROM mlp_prediction_regress JOIN lin_housing_wi
-ON mlp_prediction_regress.id = lin_housing_wi.id
-WHERE lin_housing_wi.grp_by_col=2;
-
+ON mlp_prediction_regress.id = lin_housing_wi.id;
