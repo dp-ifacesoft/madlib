@@ -195,25 +195,25 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
                     # classification model.
                     view_def = """
                         WITH vw AS (
-                                SELECT DISTINCT ON({test_id_temp})
+                            SELECT DISTINCT ON({test_id_temp})
+                                {test_id_temp},
+                                last_value(data_sum) OVER (wnd) data_dist ,
+                                last_value({label_col_temp}) OVER (wnd) {label_col_temp}
+                            FROM   (
+                                SELECT
                                     {test_id_temp},
-                                    last_value(data_sum) OVER wnd data_dist ,
-                                    last_value({label_col_temp}) OVER wnd {label_col_temp}
-                                FROM   (
-                                    SELECT
-                                        {test_id_temp},
-                                        {label_col_temp},
-                                        sum(dist_inverse) data_sum
-                                    FROM pg_temp.{interim_table}
-                                    GROUP BY {test_id_temp},
-                                             {label_col_temp}
-                                ) a
-                                WINDOW wnd AS (
-                                    PARTITION BY {test_id_temp}
-                                        ORDER BY data_sum, {label_col_temp}
-                                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-                                )
-                                -- GROUP BY {test_id_temp} , {label_col_temp}
+                                    {label_col_temp},
+                                    sum(dist_inverse) data_sum
+                                FROM pg_temp.{interim_table}
+                                GROUP BY {test_id_temp},
+                                         {label_col_temp}
+                            ) a
+                            WINDOW wnd AS (
+                                PARTITION BY {test_id_temp}
+                                    ORDER BY data_sum, {label_col_temp}
+                                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                            )
+                            -- GROUP BY {test_id_temp} , {label_col_temp}
                         )
                         """.format(**locals())
                     # This join is needed to get the max value of predicion
