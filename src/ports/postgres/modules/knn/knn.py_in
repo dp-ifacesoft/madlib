@@ -197,8 +197,16 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
                         WITH vw AS (
                             SELECT DISTINCT ON({test_id_temp})
                                 {test_id_temp},
-                                last_value(data_sum) OVER (wnd) data_dist ,
-                                last_value({label_col_temp}) OVER (wnd) {label_col_temp}
+                                last_value(data_sum) OVER (
+                                    PARTITION BY {test_id_temp}
+                                    ORDER BY data_sum, {label_col_temp}
+                                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                                    ) AS data_dist ,
+                                last_value({label_col_temp}) OVER (
+                                    PARTITION BY {test_id_temp}
+                                    ORDER BY data_sum, {label_col_temp}
+                                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                                    ) AS {label_col_temp}
                             FROM   (
                                 SELECT
                                     {test_id_temp},
@@ -208,11 +216,6 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
                                 GROUP BY {test_id_temp},
                                          {label_col_temp}
                             ) a
-                            WINDOW wnd AS (
-                                PARTITION BY {test_id_temp}
-                                    ORDER BY data_sum, {label_col_temp}
-                                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-                            )
                             -- GROUP BY {test_id_temp} , {label_col_temp}
                         )
                         """.format(**locals())
