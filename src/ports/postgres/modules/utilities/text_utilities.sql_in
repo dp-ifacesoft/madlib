@@ -78,12 +78,13 @@ and topic modelling.
 
     <dt>compute_vocab</dt>
     <dd>BOOLEAN. (Optional, Default=FALSE)
-    Flag to indicate if a vocabulary is to be created. If TRUE, an additional
+    Flag to indicate if a vocabulary table is to be created. If TRUE, an additional
     output table is created containing the vocabulary of all words, with an id
-    assigned to each word. The table is called <em>output_table</em>_vocabulary
+    assigned to each word in alphabetical order. 
+    The table is called <em>output_table</em>_vocabulary
     (i.e., suffix added to the <em>output_table</em> name) and contains the
     following columns:
-        - \c wordid: An id for each word.
+        - \c wordid: An id for each word in alphabetical order.
         - \c word: The word/term corresponding to the id.
     </dd>
 </dl>
@@ -154,7 +155,7 @@ words    | {look,at,this,cute,hamster,munching,on,a,piece,of,broccoli}
 <pre class="example">
 DROP TABLE IF EXISTS documents_tf, documents_tf_vocabulary;
 SELECT madlib.term_frequency('documents',    -- input table
-                             'docid',        -- document id
+                             'docid',        -- document id column
                              'words',        -- vector of words in document
                              'documents_tf'  -- output table
                             );
@@ -209,7 +210,7 @@ actual word:
 <pre class="example">
 DROP TABLE IF EXISTS documents_tf, documents_tf_vocabulary;
 SELECT madlib.term_frequency('documents',    -- input table
-                             'docid',        -- document id
+                             'docid',        -- document id column
                              'words',        -- vector of words in document
                              'documents_tf',-- output table
                              TRUE
