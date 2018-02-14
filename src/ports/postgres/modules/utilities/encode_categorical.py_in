@@ -79,7 +79,7 @@ class CategoricalEncoder(object):
         self.output_dictionary = output_dictionary
         self.distributed_by = distributed_by if not is_platform_pg() else None
 
-        self._name_others_col = "_MISC__"
+        self._name_others_col = "_misc__"
         self._array_out_name = "__encoded_variables__"
 
         # create new parameters after validating and parsing inputs
@@ -317,7 +317,19 @@ class CategoricalEncoder(object):
 
             if self.output_type not in ('array', 'svec'):
                 if not self._output_dictionary:
-                    value_names = {None: 'NULL',
+                    ## MADLIB-1202
+                    ## In postgres, boolean variables are always saved
+                    ## as 'True', 'False' with the first letter as capital,
+                    ## which will cause the generated column name as
+                    ## <boolean column name>_True/False that needs double
+                    ## quoting to query. To make it more convnient to user,
+                    ## we cast them to lower case true/false so that the
+                    ## generated column name is <boolean column name>_true/false
+                    ## The same logic applied to _null and _misc strs
+                    if v in ('True', 'False'):
+                        v = v.lower()
+
+                    value_names = {None: 'null',
                                    list: self._name_others_col,
                                    str: strip_end_quotes(v)}
                     alias = 'AS "{0}_{1}"'.format(col_no_quotes, value_names[v_type])
