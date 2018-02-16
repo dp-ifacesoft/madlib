@@ -522,7 +522,7 @@ class CategoricalEncoder(object):
         ## we cast the column to text format so that boolean True/False
         ## will become lower case true/false and the generated column name
         ## is <boolean column name>_true/false.
-        ## The same logic applied tog generated column name with _null
+        ## The same logic applied to generated column name with _null
         ## and _misc strs
         array_agg_str = ',\n'.join('array_agg(DISTINCT {c}::TEXT) AS {c_quoted}'.
                                    format(c=c, c_quoted=quote_ident(c))
