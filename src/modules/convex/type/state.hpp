@@ -872,6 +872,7 @@ public:
             + 1                         // activation
 
             + 1                         // numRows
+            // FIXME: we might not need numBuffers
             + 1                         // numBuffers
             + 1                         // batchSize
             + 1                         // nEpochs

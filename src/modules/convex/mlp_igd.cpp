@@ -214,9 +214,8 @@ mlp_minibatch_transition::run(AnyType &args) {
     tuple.depVar.rebind(depVar.memoryHandle(), depVar.size());
     tuple.weight = args[8].getAs<double>();
 
-    MLPMiniBatchAlgorithm::transitionInMiniBatch2(state, tuple);
-    state.algo.numRows += indVar.cols();
-    state.algo.numBuffers += 1;
+    MLPMiniBatchAlgorithm::transitionInMiniBatch(state, tuple);
+    state.algo.numRows += tuple.indVar.rows();
     return state;
 }
 
@@ -256,7 +255,6 @@ mlp_minibatch_merge::run(AnyType &args) {
     // The following numRows update, cannot be put above, because the model
     // averaging depends on their original values
     stateLeft.algo.numRows += stateRight.algo.numRows;
-    stateLeft.algo.numBuffers += stateRight.algo.numBuffers;
     stateLeft.algo.loss += stateRight.algo.loss;
 
     return stateLeft;
