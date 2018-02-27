@@ -47,6 +47,7 @@ from utilities.utilities import get_grouping_col_str
 from utilities.validate_args import _tbl_dimension_rownum
 from utilities.validate_args import array_col_dimension
 from utilities.validate_args import cols_in_tbl_valid
+from utilities.validate_args import get_col_dimension
 from utilities.validate_args import get_expr_type
 from utilities.validate_args import input_tbl_valid
 from utilities.validate_args import is_var_valid
@@ -149,9 +150,9 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
         if is_classification:
             num_output_nodes = len(labels)
         else:
-            # FIXME: this is WRONG
-            num_output_nodes = array_col_dimension(tbl_data_scaled,
-                                               dependent_varname)
+            num_output_nodes = get_col_dimension(tbl_data_scaled,
+                                                 dependent_varname,
+                                                 dim = 2)
     else:
         if is_classification:
             labels = plpy.execute("SELECT DISTINCT {0} FROM {1}".

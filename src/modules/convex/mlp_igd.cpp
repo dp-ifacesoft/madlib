@@ -201,17 +201,16 @@ mlp_minibatch_transition::run(AnyType &args) {
 
     // tuple
     Matrix indVar;
-    MappedColumnVector depVar;
+    Matrix depVar;
     try {
         indVar = args[1].getAs<MappedMatrix>();
-        MappedColumnVector y = args[2].getAs<MappedColumnVector>();
-        depVar.rebind(y.memoryHandle(), y.size());
+        depVar = args[1].getAs<MappedMatrix>();
     } catch (const ArrayWithNullException &e) {
         return args[0];
     }
     MiniBatchTuple tuple;
     tuple.indVar = trans(indVar);
-    tuple.depVar.rebind(depVar.memoryHandle(), depVar.size());
+    tuple.depVar = depVar;
     tuple.weight = args[8].getAs<double>();
 
     MLPMiniBatchAlgorithm::transitionInMiniBatch(state, tuple);

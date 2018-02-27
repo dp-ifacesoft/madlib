@@ -92,18 +92,18 @@ IGD<State, ConstState, Task>::transition(state_type &state,
         double loss = 0.0;
         for (int curr_batch=0, curr_batch_row_index=0; curr_batch < n_batches;
              curr_batch++, curr_batch_row_index += batch_size) {
-           Matrix X_batch;
-           ColumnVector y_batch;
-           if (curr_batch == n_batches-1) {
-              // last batch
-              X_batch = tuple.indVar.bottomRows(n_rows-curr_batch_row_index);
-              y_batch = tuple.depVar.tail(n_rows-curr_batch_row_index);
-           } else {
-               X_batch = tuple.indVar.block(curr_batch_row_index, 0, batch_size, n_ind_cols);
-               y_batch = tuple.depVar.segment(curr_batch_row_index, batch_size);
-           }
-           loss += Task::getLossAndUpdateModel(
-               state.task.model, X_batch, y_batch, state.task.stepsize);
+            Matrix X_batch;
+            Matrix Y_batch;
+            if (curr_batch == n_batches-1) {
+               // last batch
+               X_batch = tuple.indVar.bottomRows(n_rows-curr_batch_row_index);
+               Y_batch = tuple.depVar.bottomRows(n_rows-curr_batch_row_index);
+            } else {
+                X_batch = tuple.indVar.block(curr_batch_row_index, 0, batch_size, n_ind_cols);
+                Y_batch = tuple.depVar.block(curr_batch_row_index, 0, batch_size, n_ind_cols);
+            }
+            loss += Task::getLossAndUpdateModel(
+                state.task.model, X_batch, Y_batch, state.task.stepsize);
         }
 
         // The first epoch will most likely have the highest loss.

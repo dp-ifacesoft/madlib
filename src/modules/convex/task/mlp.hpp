@@ -55,7 +55,7 @@ public:
     static double getLossAndUpdateModel(
             model_type                          &model,
             const Matrix                        &x,
-            const ColumnVector                  &y,
+            const Matrix                        &y,
             const double                        &stepsize);
 
     static double loss(
@@ -122,7 +122,7 @@ double
 MLP<Model, Tuple>::getLossAndUpdateModel(
         model_type           &model,
         const Matrix         &x_batch,
-        const ColumnVector   &y_true_batch,
+        const Matrix         &y_true_batch,
         const double         &stepsize) {
 
     uint16_t N = model.u.size(); // assuming nu. of layers >= 1
@@ -138,7 +138,7 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
 
     for (i=0; i < n; i++){
         ColumnVector x = x_batch.row(i);
-        ColumnVector y_true = y_true_batch.segment(i, 1);
+        ColumnVector y_true = y_true_batch.row(i);
         // FIXME: CURRENTLY HARD-CODED FOR SINGLE OUTPUT NODE
 
         std::vector<ColumnVector> net, o, delta;

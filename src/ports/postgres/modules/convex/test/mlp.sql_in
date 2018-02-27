@@ -28,7 +28,6 @@
 -- Classification
 
 
-<<<<<<< HEAD
 SELECT setseed(0.6);
 DROP TABLE IF EXISTS iris_data, iris_test CASCADE;
 CREATE TABLE iris_data(
