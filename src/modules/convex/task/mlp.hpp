@@ -137,6 +137,8 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
                                                    model.u[k].cols());
 
+    model += velocity * mu;
+
     for (i=0; i < num_rows_in_batch; i++){
         ColumnVector x = x_batch.row(i);
         ColumnVector y_true = y_true_batch.row(i);
@@ -164,9 +166,11 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
     for (k=0; k < num_layers; k++){
         Matrix regularization = MLP<Model, Tuple>::lambda * model.u[k];
         regularization.row(0).setZero(); // Do not update bias
-        model.u[k] -= stepsize * (total_gradient_per_layer[k] / \
-                                  num_rows_in_batch + \
-                                  regularization);
+        velocity.u[k] =  mu * velocity.u[k] -
+                                stepsize * (total_gradient_per_layer[k] / \
+                                                   num_rows_in_batch + \
+                                            regularization)
+        model.u[k] += velocity.u[k];
     }
     return total_loss;
 }

@@ -697,6 +697,7 @@ public:
 
     struct AlgoState {
         MLPModel<Handle> incrModel;
+        MLPModel<Handle> velocity;
         count_type numRows;
         numeric_type loss;
     } algo;
@@ -853,6 +854,7 @@ public:
     numeric_type stepsize;
     numeric_type lambda;
     MLPModel<Handle> model;
+    MLPModel<Handle> velocity;
 
     count_type numRows;
     dimension_type batchSize;
