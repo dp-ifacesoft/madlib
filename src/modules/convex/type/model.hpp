@@ -107,16 +107,32 @@ struct MLPModel {
     typename HandleTraits<Handle>::ReferenceToDouble activation;
     // std::vector<Eigen::Map<Matrix > > u;
     std::vector<MutableMappedMatrix> u;
+    std::vector<MutableMappedMatrix> velocity;
 
     /**
-     * @brief Space needed.
+     * @brief Space needed for the whole model
      *
-     * Extra information besides the values in the matrix, like dimension is
-     * necessary for a matrix, so that it can perform operations. These are
-     * stored in the HandleMap.
      */
     static inline uint32_t arraySize(const uint16_t &inNumberOfStages,
                                      const double *inNumbersOfUnits) {
+        // inNumberOfStages == 0 is not an expected value, but
+        // it won't cause exception -- returning 0
+        uint32_t size = 0;
+        size_t N = inNumberOfStages;
+        const double *n = inNumbersOfUnits;
+        size_t k;
+        for (k = 0; k < N; k ++) {
+            size += (n[k] + 1) * (n[k+1]);
+        }
+        return size * 2;     // weights (u) + velocity
+    }
+
+    /**
+     * @brief Space needed for the coefficients
+     *
+     */
+    static inline uint32_t coeffArraySize(const uint16_t &inNumberOfStages,
+                                          const double *inNumbersOfUnits) {
         // inNumberOfStages == 0 is not an expected value, but
         // it won't cause exception -- returning 0
         uint32_t size = 0;
@@ -144,14 +160,15 @@ struct MLPModel {
         uint32_t sizeOfU = 0;
         u.clear();
         for (k = 0; k < N; k ++) {
-            // u.push_back(Eigen::Map<Matrix >(
-            //     const_cast<double*>(data + sizeOfU),
-            //     n[k] + 1, n[k+1]));
             u.push_back(MutableMappedMatrix());
             u[k].rebind(const_cast<double *>(data + sizeOfU), n[k] + 1, n[k+1]);
             sizeOfU += (n[k] + 1) * (n[k+1]);
         }
-
+        for (k = 0; k < N; k ++) {
+            velocity.push_back(MutableMappedMatrix());
+            velocity[k].rebind(const_cast<double *>(data + sizeOfU), n[k] + 1, n[k+1]);
+            sizeOfU += (n[k] + 1) * (n[k+1]);
+        }
         return sizeOfU;
     }
 
@@ -166,7 +183,9 @@ struct MLPModel {
             // See design doc for more info
             span = 0.5 * sqrt(6.0 / (n[k] + n[k+1]));
             u[k] << span * Matrix::Random(u[k].rows(), u[k].cols());
+            velocity[k].setZero();
         }
+
     }
 
     double norm() const {
@@ -182,6 +201,7 @@ struct MLPModel {
         size_t k;
         for (k = 0; k < u.size(); k ++) {
             u[k].setZero();
+            velocity[k].setZero();
         }
     }
 
@@ -224,6 +244,7 @@ struct MLPModel {
         size_t k;
         for (k = 0; k < u.size() && k < inOtherModel.u.size(); k ++) {
             u[k] = inOtherModel.u[k];
+            velocity[k] = inOtherModel.velocity[k];
         }
         is_classification = inOtherModel.is_classification;
         activation = inOtherModel.activation;

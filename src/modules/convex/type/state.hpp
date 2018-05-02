@@ -697,7 +697,6 @@ public:
 
     struct AlgoState {
         MLPModel<Handle> incrModel;
-        MLPModel<Handle> velocity;
         count_type numRows;
         numeric_type loss;
     } algo;
@@ -832,10 +831,11 @@ private:
         stepsize.rebind(&mStorage[N + 2]);
         lambda.rebind(&mStorage[N + 3]);
         size_t sizeOfModel = model.rebind(&mStorage[N + 4],
-                                               &mStorage[N + 5],
-                                               &mStorage[N + 6],
-                                               numberOfStages,
-                                               numbersOfUnits);
+                                          &mStorage[N + 5],
+                                          &mStorage[N + 6],
+                                          numberOfStages,
+                                          numbersOfUnits);
+
         numRows.rebind(&mStorage[N + 6 + sizeOfModel]);
         batchSize.rebind(&mStorage[N + 7 + sizeOfModel]);
         nEpochs.rebind(&mStorage[N + 8 + sizeOfModel]);
@@ -854,7 +854,6 @@ public:
     numeric_type stepsize;
     numeric_type lambda;
     MLPModel<Handle> model;
-    MLPModel<Handle> velocity;
 
     count_type numRows;
     dimension_type batchSize;

@@ -357,7 +357,7 @@ internal_mlp_minibatch_result::run(AnyType &args) {
     MLPMiniBatchState<ArrayHandle<double> > state = args[0];
     HandleTraits<ArrayHandle<double> >::ColumnVectorTransparentHandleMap flattenU;
     flattenU.rebind(&state.model.u[0](0, 0),
-                    state.model.arraySize(state.numberOfStages,
+                    state.model.coeffArraySize(state.numberOfStages,
                                           state.numbersOfUnits));
     AnyType tuple;
     tuple << flattenU

@@ -137,7 +137,9 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
                                                    model.u[k].cols());
 
-    model += velocity * mu;
+    // Nesterov method's first update to position
+    for (k=0; k < num_layers; k++)
+        model.u[k] += 0.9 * model.velocity[k];
 
     for (i=0; i < num_rows_in_batch; i++){
         ColumnVector x = x_batch.row(i);
@@ -163,14 +165,22 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
             total_loss += 0.5 * (y_estimated - y_true).squaredNorm();
         }
     }
+
     for (k=0; k < num_layers; k++){
         Matrix regularization = MLP<Model, Tuple>::lambda * model.u[k];
         regularization.row(0).setZero(); // Do not update bias
-        velocity.u[k] =  mu * velocity.u[k] -
-                                stepsize * (total_gradient_per_layer[k] / \
-                                                   num_rows_in_batch + \
-                                            regularization)
-        model.u[k] += velocity.u[k];
+        // TODO:
+        //  1. create variable velocity_update and gradient_update to simplify
+        // below code.
+        //  2. add momentum method
+
+        model.velocity[k] =  0.9 * model.velocity[k] -
+            stepsize * (total_gradient_per_layer[k] / num_rows_in_batch +
+                            regularization);
+
+        // Nesterov method's second update (correction) to position
+        model.u[k] -= stepsize * (total_gradient_per_layer[k] / num_rows_in_batch +
+                                    regularization);
     }
     return total_loss;
 }
@@ -331,4 +341,5 @@ MLP<Model, Tuple>::backPropogate(
 } // namespace madlib
 
 #endif
+
 

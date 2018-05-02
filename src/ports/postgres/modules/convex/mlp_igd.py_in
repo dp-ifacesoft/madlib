@@ -1753,6 +1753,7 @@ class MLPMinibatchPreProcessor:
     """
     # summary table columns names
     DEPENDENT_VARNAME = "dependent_varname"
+    DEPENDENT_VARTYPE = "dependent_vartype"
     INDEPENDENT_VARNAME = "independent_varname"
     GROUPING_COL = "grouping_cols"
     CLASS_VALUES = "class_values"
@@ -1781,7 +1782,7 @@ class MLPMinibatchPreProcessor:
             summary_table_columns = summary_table_columns[0]
 
         required_columns = (self.DEPENDENT_VARNAME, self.INDEPENDENT_VARNAME,
-                            self.CLASS_VALUES, self.GROUPING_COL)
+                            self.CLASS_VALUES, self.GROUPING_COL, self.DEPENDENT_VARTYPE)
         if set(required_columns) <= set(summary_table_columns):
             self.preprocessed_summary_dict = summary_table_columns
         else:
