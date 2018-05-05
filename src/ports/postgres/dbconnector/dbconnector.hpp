@@ -85,9 +85,9 @@ extern "C" {
 #include <boost/type_traits/remove_cv.hpp>
 #include <boost/math/special_functions/fpclassify.hpp>
 #include <boost/utility/enable_if.hpp>
-#include <boost/tr1/array.hpp>
-#include <boost/tr1/functional.hpp>
-#include <boost/tr1/tuple.hpp>
+//#include <boost/tr1/array.hpp>
+//#include <boost/tr1/functional.hpp>
+//#include <boost/tr1/tuple.hpp>
 #include <algorithm>
 #include <complex>
 #include <limits>
@@ -99,18 +99,18 @@ extern "C" {
 #include <utils/Reference.hpp>
 #include <utils/Math.hpp>
 
-namespace std {
-    // Import names from TR1.
-
-    // The following are currently provided by boost.
-    using tr1::array;
-    using tr1::bind;
-    using tr1::function;
-    using tr1::get;
-    using tr1::make_tuple;
-    using tr1::tie;
-    using tr1::tuple;
-}
+//namespace std {
+//    // Import names from TR1.
+//
+//    // The following are currently provided by boost.
+//    using tr1::array;
+//    using tr1::bind;
+//    using tr1::function;
+//    using tr1::get;
+//    using tr1::make_tuple;
+//    using tr1::tie;
+//    using tr1::tuple;
+//}
 
 #if !defined(NDEBUG) && !defined(EIGEN_NO_DEBUG)
 #define eigen_assert(x) \
