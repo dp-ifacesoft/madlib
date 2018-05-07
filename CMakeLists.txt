@@ -93,7 +93,7 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     # - long long is not part of the C++ 1998/2003 standard, but it is such a
     # common (and useful) extension that we do not want to hear warnings about
     # it.
-    set(CMAKE_CXX_FLAGS "-std=gnu++98 -fdiagnostics-show-option -Wall -Wextra -pedantic -Wconversion -Wno-long-long -Wno-clobbered -mno-sse2 -fstrict-aliasing"
+    set(CMAKE_CXX_FLAGS "-std=gnu++98 -D_GLIBCXX_USE_CXX11_ABI=0 -fdiagnostics-show-option -Wall -Wextra -pedantic -Wconversion -Wno-long-long -Wno-clobbered -mno-sse2 -fstrict-aliasing"
         CACHE STRING
         "Flags used by the compiler during all build types." FORCE)
 
