@@ -8,11 +8,9 @@
 #define MADLIB_MODULES_SAMPLE_WEIGHTED_SAMPLE_IMPL_HPP
 
 #include <boost/tr1/random.hpp>
-//#include <random>
 
 // Import TR1 names (currently used from boost). This can go away once we make
 // the switch to C++11.
-//TODO
 namespace std {
     using tr1::bernoulli_distribution;
 }
@@ -109,7 +107,6 @@ WeightedSampleAccumulator<Container, T>::operator<<(
 
     // Instead of throwing an error, we will just ignore rows with a negative
     // weight
-    //TODO debug this when not using boost bernoulli
     if (weight > 0.) {
         weight_sum += weight;
         std::bernoulli_distribution success(weight / weight_sum);
