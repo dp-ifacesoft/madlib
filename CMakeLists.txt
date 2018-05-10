@@ -72,7 +72,11 @@ if(CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS "-std=c99 -D_GLIBCXX_USE_CXX11_ABI=0 -pedantic -Wall -Wextra -Wno-clobbered -D_XOPEN_SOURCE=600"
         CACHE STRING
         "Flags used by the compiler during all build types." FORCE)
-    add_compile_options("-O2")
+    if((CMAKE_C_COMPILER_VERSION VERSION_EQUAL 5.0) OR (CMAKE_C_COMPILER_VERSION VERSION_GREATER 5.0))
+        # Versions 5+ fail with the "Release" build type i.e. when optimization
+        # level is -O3 or greater.
+        add_compile_options("-O2")
+    endif()
 
     # See comments below for C++:
     # Weird enough, the following property is set only for C++ but not for C
@@ -97,7 +101,12 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     set(CMAKE_CXX_FLAGS "-std=gnu++98 -D_GLIBCXX_USE_CXX11_ABI=0 -fdiagnostics-show-option -Wall -Wextra -pedantic -Wconversion -Wno-long-long -Wno-clobbered -mno-sse2 -fstrict-aliasing"
         CACHE STRING
         "Flags used by the compiler during all build types." FORCE)
-    add_compile_options("-O2")
+
+    if((CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 5.0) OR (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0))
+        # Versions 5+ fail with the "Release" build type i.e. when optimization
+        # level is -O3 or greater.
+        add_compile_options("-O2")
+    endif()
     # We want to include some header files as system header files in order to
     # disable warnings. However, on Mac OS X, a CMake variable is not set
     # correctly on Mac OS X. http://www.cmake.org/Bug/view.php?id=10837
