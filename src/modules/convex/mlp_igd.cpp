@@ -119,21 +119,15 @@ mlp_igd_transition::run(AnyType &args) {
         state.reset();
     }
 
-    // tuple
-    ColumnVector indVar;
-    MappedColumnVector depVar;
+    MLPTuple tuple;
     try {
-        indVar = args[1].getAs<MappedColumnVector>();
-        MappedColumnVector y = args[2].getAs<MappedColumnVector>();
-        depVar.rebind(y.memoryHandle(), y.size());
+        tuple.indVar = args[1].getAs<MappedColumnVector>();;
+        tuple.depVar = args[2].getAs<MappedColumnVector>();
     } catch (const ArrayWithNullException &e) {
         return args[0];
     }
-    MLPTuple tuple;
-    tuple.indVar = indVar;
-    tuple.depVar.rebind(depVar.memoryHandle(), depVar.size());
-    tuple.weight = args[8].getAs<double>();
 
+    tuple.weight = args[8].getAs<double>();
     MLPIGDAlgorithm::transition(state, tuple);
     // Use the model from the previous iteration to compute the loss (note that
     // it is stored in Task's state, and the Algo's state holds the model from

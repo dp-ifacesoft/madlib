@@ -134,13 +134,12 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
 
     // gradient added over the batch
     std::vector<Matrix> total_gradient_per_layer(num_layers);
-    for (k=0; k < num_layers; ++k)
+    for (k=0; k < num_layers; ++k) {
         total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
                                                    model.u[k].cols());
-
-    // Nesterov method's first update to position
-    for (k=0; k < num_layers; k++)
+        // Nesterov method's first update to position
         model.u[k] += mu * model.velocity[k];
+    }
 
     for (i=0; i < num_rows_in_batch; i++){
         ColumnVector x = x_batch.row(i);
@@ -151,7 +150,7 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         backPropogate(y_true, o.back(), net, model, delta);
 
         for (k=0; k < num_layers; k++){
-                total_gradient_per_layer[k] += o[k] * delta[k].transpose();
+            total_gradient_per_layer[k] += o[k] * delta[k].transpose();
         }
 
         // loss computation
@@ -194,36 +193,7 @@ MLP<Model, Tuple>::gradientInPlace(
         const dependent_variable_type       &y_true,
         const double                        &stepsize)
 {
-    uint16_t num_layers = model.u.size(); // assuming nu. of layers >= 1
-    uint16_t k;
-    float mu = 0.9;
-
-    // Nesterov method's first update to position
-    for (k=0; k < num_layers; k++)
-    {
-        model.u[k] += mu * model.velocity[k];
-    }
-
-    std::vector<ColumnVector> net, o, delta;
-    feedForward(model, x, net, o);
-    backPropogate(y_true, o.back(), net, model, delta);
-
-    std::vector<Matrix> total_gradient_per_layer(num_layers);
-    for (k=0; k < num_layers; ++k)
-    {
-        total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
-                                                   model.u[k].cols());
-        total_gradient_per_layer[k] += o[k] * delta[k].transpose();
-    }
-
-    for (k=0; k < num_layers; k++){
-        Matrix regularization = MLP<Model, Tuple>::lambda*model.u[k];
-        regularization.row(0).setZero(); // Do not update bias
-        model.velocity[k] =  mu * model.velocity[k] - stepsize * (total_gradient_per_layer[k] + regularization);
-
-        // Nesterov method's second update (correction) to position
-        model.u[k] -= stepsize * (total_gradient_per_layer[k] + regularization);
-    }
+    getLossAndUpdateModel(model, x.transpose(), y_true.transpose(), stepsize);
 }
 
 template <class Model, class Tuple>
