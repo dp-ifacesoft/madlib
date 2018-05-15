@@ -105,9 +105,9 @@ template <class Handle>
 struct MLPModel {
     typename HandleTraits<Handle>::ReferenceToDouble is_classification;
     typename HandleTraits<Handle>::ReferenceToDouble activation;
+    typename HandleTraits<Handle>::ReferenceToDouble momentum;
+    typename HandleTraits<Handle>::ReferenceToBool is_nesterov;
 
-    double mu;
-    bool is_nesterov;
     uint16_t num_layers;
 
     // std::vector<Eigen::Map<Matrix > > u;
@@ -129,7 +129,8 @@ struct MLPModel {
         for (k = 0; k < N; k ++) {
             size += (n[k] + 1) * (n[k+1]);
         }
-        return size * 2;     // weights (u) + velocity
+        //TODO conditionally assign size based on momentum
+        return size * 2 + 2;     // position (u) + velocity + momentum + is_nesterov
     }
 
     /**
@@ -160,9 +161,11 @@ struct MLPModel {
 
         is_classification.rebind(is_classification_in);
         activation.rebind(activation_in);
+        momentum.rebind(const_cast<double *>(data + 0));
+        is_nesterov.rebind(const_cast<double *>(data + 1));
         num_layers = inNumberOfStages;
 
-        uint32_t sizeOfU = 0;
+        uint32_t sizeOfU = 2;
         u.clear();
         for (k = 0; k < num_layers; k ++) {
             u.push_back(MutableMappedMatrix());
@@ -178,10 +181,8 @@ struct MLPModel {
     }
 
     void initialize(const uint16_t &inNumberOfStages,
-                    const double *inNumbersOfUnits){
+                    const double *inNumbersOfUnits) {
         num_layers = inNumberOfStages;
-        mu = 0.9;
-        is_nesterov = TRUE;
 
         for (size_t k =0; k < num_layers; ++k){
             // Initalize according to Glorot and Bengio (2010)
@@ -194,9 +195,9 @@ struct MLPModel {
 
     void updateVelocity(const std::vector<Matrix> gradient){
         for (size_t k = 0; k < u.size(); k++){
-            if (mu > 0.){
+            if (momentum > 0.){
                 // if momentum is enabled
-                velocity[k] = mu * velocity[k] + gradient[k];
+                velocity[k] = momentum * velocity[k] + gradient[k];
             }
         }
     }
@@ -207,15 +208,15 @@ struct MLPModel {
                 u[k] += gradient[k];
             }
             else {
-                u[k] += mu * velocity[k] + gradient[k];
+                u[k] += momentum * velocity[k] + gradient[k];
             }
         }
     }
 
-    void nesterovUpdate(){
+    void nesterovUpdatePosition(){
         if (is_nesterov){
             for (size_t k = 0; k < u.size(); k++){
-                u[k] += mu * velocity[k];
+                u[k] += momentum * velocity[k];
             }
         }
     }
@@ -280,6 +281,8 @@ struct MLPModel {
         }
         is_classification = inOtherModel.is_classification;
         activation = inOtherModel.activation;
+        momentum = inOtherModel.momentum;
+        is_nesterov = inOtherModel.is_nesterov;
 
         return *this;
     }

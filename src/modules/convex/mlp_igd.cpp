@@ -91,6 +91,8 @@ mlp_igd_transition::run(AnyType &args) {
             // args[8] is for weighting the input row, which is populated later.
             state.task.lambda = args[10].getAs<double>();
             MLPTask::lambda = state.task.lambda;
+            state.task.model.momentum = args[11].getAs<double>();
+            state.task.model.is_nesterov = args[12].getAs<bool>();
 
             if (!args[9].isNull()){
                 // initial coefficients are provided
@@ -207,6 +209,8 @@ mlp_minibatch_transition::run(AnyType &args) {
             state.model.activation = static_cast<double>(args[6].getAs<int>());
             state.model.is_classification = static_cast<double>(args[7].getAs<int>());
             // args[8] is for weighting the input row, which is populated later.
+            state.model.momentum = args[13].getAs<double>();
+            state.model.is_nesterov = args[14].getAs<bool>();
             if (!args[9].isNull()){
                 // initial coefficients are provided copy warm start into the model
                 MappedColumnVector warm_start_coeff = args[9].getAs<MappedColumnVector>();

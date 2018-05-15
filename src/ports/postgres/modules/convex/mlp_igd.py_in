@@ -305,7 +305,9 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                             ({start_coeff})::DOUBLE PRECISION[],
                             {lambda_},
                             {batch_size}::integer,
-                            {n_epochs}::integer
+                            {n_epochs}::integer,
+                            0.9,
+                            TRUE
                         )
                         """
                 else:
@@ -320,7 +322,9 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                             {is_classification},
                             ({weights})::DOUBLE PRECISION,
                             ({start_coeff})::DOUBLE PRECISION[],
-                            {lambda_}
+                            {lambda_},
+                            0.9,
+                            TRUE
                         )
                         """
                 it.update(train_sql)

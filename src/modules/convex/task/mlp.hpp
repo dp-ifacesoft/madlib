@@ -138,12 +138,11 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         const Matrix         &y_true_batch,
         const double         &stepsize) {
 
-    float mu = 0.9;
     std::vector<Matrix> total_gradient_per_layer(model.num_layers);
 
     // model is updated with the momentum step (i.e. velocity vector)
     // if Nesterov Accelerated Gradient is enabled
-    model.nesterovUpdate();
+    model.nesterovUpdatePosition();
     double total_loss = getLossAndGradient(model,
                                            x_batch, y_true_batch,
                                            total_gradient_per_layer, stepsize);
@@ -206,7 +205,7 @@ MLP<Model, Tuple>::getLoss(const ColumnVector &y_true,
                            const ColumnVector &y_estimated,
                            const bool is_classification){
     if(is_classification){
-        // softmax loss function
+        // cross entropy loss function
         double clip = 1.e-10;
         ColumnVector y_clipped = y_estimated.cwiseMax(clip).cwiseMin(1. - clip);
         return -(y_true.array() * y_clipped.array().log() +
