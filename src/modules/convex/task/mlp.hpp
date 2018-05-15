@@ -131,6 +131,7 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
     size_t i, k;
     double total_loss = 0.;
     float mu = 0.9;
+//    bool is_nesterov = 1;
 
     // gradient added over the batch
     std::vector<Matrix> total_gradient_per_layer(num_layers);
@@ -138,7 +139,8 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
                                                    model.u[k].cols());
         // Nesterov method's first update to position
-        model.u[k] += mu * model.velocity[k];
+        if nesterov:
+            model.u[k] += mu * model.velocity[k];
     }
 
     for (i=0; i < num_rows_in_batch; i++){
@@ -174,13 +176,17 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         // below code.
         //  2. add momentum method
 
-        model.velocity[k] =  mu * model.velocity[k] -
-            stepsize * (total_gradient_per_layer[k] / num_rows_in_batch +
-                            regularization);
 
+        velocity_update = mu*model.velocity[k];
+        gradient_update = stepsize * (total_gradient_per_layer[k] / num_rows_in_batch +
+                    regularization);
+
+        model.velocity[k] =  velocity_update - gradient_update;
         // Nesterov method's second update (correction) to position
-        model.u[k] -= stepsize * (total_gradient_per_layer[k] / num_rows_in_batch +
-                                    regularization);
+        if nesterov:
+            velocity_update = 0;
+        model.u[k] += velocity_update - gradient_update;
+        else
     }
     return total_loss;
 }
@@ -193,6 +199,10 @@ MLP<Model, Tuple>::gradientInPlace(
         const dependent_variable_type       &y_true,
         const double                        &stepsize)
 {
+    // getLossAndUpdateModel expects a batch for x and y where each row of x and y
+    // is a single data point.
+    // x and y_true in gradientInPlace are of type ColumnVector(see tuple.hpp)
+    // and we transpose them to pass them as a row.
     getLossAndUpdateModel(model, x.transpose(), y_true.transpose(), stepsize);
 }
 
