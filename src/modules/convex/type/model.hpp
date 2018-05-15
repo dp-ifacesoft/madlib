@@ -105,6 +105,11 @@ template <class Handle>
 struct MLPModel {
     typename HandleTraits<Handle>::ReferenceToDouble is_classification;
     typename HandleTraits<Handle>::ReferenceToDouble activation;
+
+    double mu;
+    bool is_nesterov;
+    uint16_t num_layers;
+
     // std::vector<Eigen::Map<Matrix > > u;
     std::vector<MutableMappedMatrix> u;
     std::vector<MutableMappedMatrix> velocity;
@@ -150,21 +155,21 @@ struct MLPModel {
                     const double *data,
                     const uint16_t &inNumberOfStages,
                     const double *inNumbersOfUnits) {
-        size_t N = inNumberOfStages;
         const double *n = inNumbersOfUnits;
         size_t k;
 
         is_classification.rebind(is_classification_in);
         activation.rebind(activation_in);
+        num_layers = inNumberOfStages;
 
         uint32_t sizeOfU = 0;
         u.clear();
-        for (k = 0; k < N; k ++) {
+        for (k = 0; k < num_layers; k ++) {
             u.push_back(MutableMappedMatrix());
             u[k].rebind(const_cast<double *>(data + sizeOfU), n[k] + 1, n[k+1]);
             sizeOfU += (n[k] + 1) * (n[k+1]);
         }
-        for (k = 0; k < N; k ++) {
+        for (k = 0; k < num_layers; k ++) {
             velocity.push_back(MutableMappedMatrix());
             velocity[k].rebind(const_cast<double *>(data + sizeOfU), n[k] + 1, n[k+1]);
             sizeOfU += (n[k] + 1) * (n[k+1]);
@@ -174,18 +179,45 @@ struct MLPModel {
 
     void initialize(const uint16_t &inNumberOfStages,
                     const double *inNumbersOfUnits){
-        size_t N = inNumberOfStages;
-        const double *n = inNumbersOfUnits;
-        size_t k;
-        double span;
-        for (k =0; k < N; ++k){
+        num_layers = inNumberOfStages;
+        mu = 0.9;
+        is_nesterov = TRUE;
+
+        for (size_t k =0; k < num_layers; ++k){
             // Initalize according to Glorot and Bengio (2010)
             // See design doc for more info
-            span = 0.5 * sqrt(6.0 / (n[k] + n[k+1]));
+            double span = 0.5 * sqrt(6.0 / (inNumbersOfUnits[k] + inNumbersOfUnits[k+1]));
             u[k] << span * Matrix::Random(u[k].rows(), u[k].cols());
             velocity[k].setZero();
         }
+    }
 
+    void updateVelocity(const std::vector<Matrix> gradient){
+        for (size_t k = 0; k < u.size(); k++){
+            if (mu > 0.){
+                // if momentum is enabled
+                velocity[k] = mu * velocity[k] + gradient[k];
+            }
+        }
+    }
+
+    void updatePosition(const std::vector<Matrix> gradient){
+        for (size_t k = 0; k < u.size(); k++){
+            if (is_nesterov){
+                u[k] += gradient[k];
+            }
+            else {
+                u[k] += mu * velocity[k] + gradient[k];
+            }
+        }
+    }
+
+    void nesterovUpdate(){
+        if (is_nesterov){
+            for (size_t k = 0; k < u.size(); k++){
+                u[k] += mu * velocity[k];
+            }
+        }
     }
 
     double norm() const {

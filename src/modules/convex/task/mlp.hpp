@@ -58,6 +58,18 @@ public:
             const Matrix                        &y,
             const double                        &stepsize);
 
+    static double getLossAndGradient(
+            const model_type                    &model,
+            const Matrix                        &x,
+            const Matrix                        &y,
+            std::vector<Matrix>                 &total_gradient_per_layer,
+            const double                        stepsize);
+
+    static double getLoss(
+            const ColumnVector                  &y_true,
+            const ColumnVector                  &y_estimated,
+            const bool                          is_classification);
+
     static double loss(
             const model_type                    &model,
             const independent_variables_type    &x,
@@ -126,24 +138,38 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         const Matrix         &y_true_batch,
         const double         &stepsize) {
 
-    uint16_t num_layers = model.u.size(); // assuming nu. of layers >= 1
-    size_t num_rows_in_batch = x_batch.rows();
-    size_t i, k;
-    double total_loss = 0.;
     float mu = 0.9;
-//    bool is_nesterov = 1;
+    std::vector<Matrix> total_gradient_per_layer(model.num_layers);
 
-    // gradient added over the batch
-    std::vector<Matrix> total_gradient_per_layer(num_layers);
-    for (k=0; k < num_layers; ++k) {
+    // model is updated with the momentum step (i.e. velocity vector)
+    // if Nesterov Accelerated Gradient is enabled
+    model.nesterovUpdate();
+    double total_loss = getLossAndGradient(model,
+                                           x_batch, y_true_batch,
+                                           total_gradient_per_layer, stepsize);
+
+    model.updateVelocity(total_gradient_per_layer);
+    model.updatePosition(total_gradient_per_layer);
+    return total_loss;
+}
+
+template <class Model, class Tuple>
+double
+MLP<Model, Tuple>::getLossAndGradient(
+        const model_type     &model,
+        const Matrix         &x_batch,
+        const Matrix         &y_true_batch,
+        std::vector<Matrix>  &total_gradient_per_layer,
+        const double         stepsize) {
+
+    double total_loss = 0.;
+    // gradient and loss added over the batch
+    for (size_t k=0; k < model.num_layers; ++k) {
         total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
                                                    model.u[k].cols());
-        // Nesterov method's first update to position
-        if nesterov:
-            model.u[k] += mu * model.velocity[k];
     }
-
-    for (i=0; i < num_rows_in_batch; i++){
+    size_t num_rows_in_batch = x_batch.rows();
+    for (size_t i=0; i < num_rows_in_batch; i++){
         ColumnVector x = x_batch.row(i);
         ColumnVector y_true = y_true_batch.row(i);
 
@@ -151,44 +177,46 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         feedForward(model, x, net, o);
         backPropogate(y_true, o.back(), net, model, delta);
 
-        for (k=0; k < num_layers; k++){
+        // compute the gradient
+        for (size_t k=0; k < model.num_layers; k++){
             total_gradient_per_layer[k] += o[k] * delta[k].transpose();
         }
 
-        // loss computation
-        ColumnVector y_estimated = o.back();
-        if(model.is_classification){
-            double clip = 1.e-10;
-            y_estimated = y_estimated.cwiseMax(clip).cwiseMin(1.-clip);
-            total_loss += - (y_true.array()*y_estimated.array().log()
-                   + (-y_true.array()+1)*(-y_estimated.array()+1).log()).sum();
-        }
-        else{
-            total_loss += 0.5 * (y_estimated - y_true).squaredNorm();
-        }
+        // compute the loss
+        total_loss += getLoss(y_true, o.back(), model.is_classification);
     }
 
-    for (k=0; k < num_layers; k++){
+    // convert gradient to a gradient update vector
+    //  1. normalize to per row update
+    //  2. discount by stepsize
+    //  3. add regularization
+    //  4. make negative
+    for (size_t k=0; k < model.num_layers; k++){
         Matrix regularization = MLP<Model, Tuple>::lambda * model.u[k];
         regularization.row(0).setZero(); // Do not update bias
-        // TODO:
-        //  1. create variable velocity_update and gradient_update to simplify
-        // below code.
-        //  2. add momentum method
-
-
-        velocity_update = mu*model.velocity[k];
-        gradient_update = stepsize * (total_gradient_per_layer[k] / num_rows_in_batch +
-                    regularization);
-
-        model.velocity[k] =  velocity_update - gradient_update;
-        // Nesterov method's second update (correction) to position
-        if nesterov:
-            velocity_update = 0;
-        model.u[k] += velocity_update - gradient_update;
-        else
+        total_gradient_per_layer[k] = -stepsize * total_gradient_per_layer[k] / num_rows_in_batch +
+                                            regularization;
     }
     return total_loss;
+}
+
+template <class Model, class Tuple>
+double
+MLP<Model, Tuple>::getLoss(const ColumnVector &y_true,
+                           const ColumnVector &y_estimated,
+                           const bool is_classification){
+    if(is_classification){
+        // softmax loss function
+        double clip = 1.e-10;
+        ColumnVector y_clipped = y_estimated.cwiseMax(clip).cwiseMin(1. - clip);
+        return -(y_true.array() * y_clipped.array().log() +
+                    (1 - y_true.array()) * (1 - y_clipped.array()).log()
+                ).sum();
+    }
+    else{
+        // squared loss
+        return 0.5 * (y_estimated - y_true).squaredNorm();
+    }
 }
 
 template <class Model, class Tuple>
