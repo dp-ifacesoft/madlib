@@ -75,6 +75,14 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
     """
     warm_start = bool(warm_start)
     optimizer_params = _get_optimizer_params(optimizer_param_str or "")
+    summary_table = add_postfix(output_table, "_summary")
+    standardization_table = add_postfix(output_table, "_standardization")
+    hidden_layer_sizes = hidden_layer_sizes or []
+
+    _validate_args(source_table, output_table, summary_table,
+                   standardization_table, independent_varname,
+                   dependent_varname, hidden_layer_sizes, optimizer_params,
+                   warm_start, activation, grouping_col)
 
     tolerance = optimizer_params["tolerance"]
     n_iterations = optimizer_params["n_iterations"]
@@ -88,18 +96,13 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
     lambda_ = optimizer_params["lambda"]
     batch_size = optimizer_params['batch_size']
     n_epochs = optimizer_params['n_epochs']
-
-    summary_table = add_postfix(output_table, "_summary")
-    standardization_table = add_postfix(output_table, "_standardization")
-    hidden_layer_sizes = hidden_layer_sizes or []
+    momentum = optimizer_params['momentum']
+    nesterov_momentum = optimizer_params['nesterov_momentum']
 
     # Note that we don't support weights with mini batching yet, so validate
     # this based on is_minibatch_enabled.
     weights = '1' if not weights or not weights.strip() else weights.strip()
-    _validate_args(source_table, output_table, summary_table,
-                   standardization_table, independent_varname,
-                   dependent_varname, hidden_layer_sizes, optimizer_params,
-                   warm_start, activation, grouping_col)
+
     is_minibatch_enabled = check_if_minibatch_enabled(source_table, independent_varname)
     _validate_params_based_on_minibatch(source_table, independent_varname,
                                         dependent_varname, weights,
@@ -251,7 +254,9 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
         "x_mean_table": x_mean_table,
         "batch_size": batch_size,
         "n_epochs": n_epochs,
-        "start_coeff": start_coeff
+        "start_coeff": start_coeff,
+        "momentum": momentum,
+        "nesterov_momentum": nesterov_momentum
     }
     # variables to be used by GroupIterationController
     it_args.update({
@@ -306,8 +311,8 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                             {lambda_},
                             {batch_size}::integer,
                             {n_epochs}::integer,
-                            0.9,
-                            TRUE
+                            {momentum}::FLOAT8,
+                            {nesterov_momentum}::boolean
                         )
                         """
                 else:
@@ -323,8 +328,8 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                             ({weights})::DOUBLE PRECISION,
                             ({start_coeff})::DOUBLE PRECISION[],
                             {lambda_},
-                            0.9,
-                            TRUE
+                            {momentum}::FLOAT8,
+                            {nesterov_momentum}::boolean
                         )
                         """
                 it.update(train_sql)
@@ -620,7 +625,9 @@ def _get_optimizer_params(param_str):
         "power": (0.5, float),
         "lambda": (0, float),
         "n_epochs": (1, int),
-        "batch_size": (1, int)
+        "batch_size": (1, int),
+        "momentum": (0.9, float),
+        "nesterov_momentum": (True, bool)
     }
     param_defaults = dict([(k, v[0]) for k, v in params_defaults.items()])
     param_types = dict([(k, v[1]) for k, v in params_defaults.items()])
@@ -798,6 +805,9 @@ def _validate_args(source_table, output_table, summary_table,
             "MLP error: batch_size should be greater than 0.")
     _assert(optimizer_params["n_epochs"] > 0,
             "MLP error: n_epochs should be greater than 0.")
+    _assert(0 <= optimizer_params["momentum"] <= 1,
+            "MLP error: momentum should be in the range [0, 1].")
+
 
     if grouping_col:
         cols_in_tbl_valid(source_table,
