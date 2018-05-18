@@ -146,11 +146,61 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
     double total_loss = getLossAndGradient(model,
                                            x_batch, y_true_batch,
                                            total_gradient_per_layer, stepsize);
-
     model.updateVelocity(total_gradient_per_layer);
+
     model.updatePosition(total_gradient_per_layer);
     return total_loss;
 }
+
+//template <class Model, class Tuple>
+//double
+//MLP<Model, Tuple>::getLossAndGradient(
+//        const model_type     &model,
+//        const Matrix         &x_batch,
+//        const Matrix         &y_true_batch,
+//        std::vector<Matrix>  &total_gradient_per_layer,
+//        const double         stepsize) {
+//
+//    double total_loss = 0.;
+//    // gradient and loss added over the batch
+//    for (size_t k=0; k < model.num_layers; ++k) {
+//        total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
+//                                                   model.u[k].cols());
+//    }
+//    size_t num_rows_in_batch = x_batch.rows();
+//    for (size_t i=0; i < num_rows_in_batch; i++){
+//        ColumnVector x = x_batch.row(i);
+//        ColumnVector y_true = y_true_batch.row(i);
+//
+//        std::vector<ColumnVector> net, o, delta;
+//        feedForward(model, x, net, o);
+//        backPropogate(y_true, o.back(), net, model, delta);
+//
+//        // compute the gradient
+//        for (size_t k=0; k < model.num_layers; k++){
+//            total_gradient_per_layer[k] += o[k] * delta[k].transpose();
+//        }
+//
+//        // compute the loss
+//        double foo = getLoss(y_true, o.back(), model.is_classification);
+////        elog(INFO, "loss %f", foo);
+//        total_loss += foo;
+//    }
+//
+//    // convert gradient to a gradient update vector
+//    //  1. normalize to per row update
+//    //  2. discount by stepsize
+//    //  3. add regularization
+//    //  4. make negative
+//    for (size_t k=0; k < model.num_layers; k++){
+//        Matrix regularization = MLP<Model, Tuple>::lambda * model.u[k];
+//        regularization.row(0).setZero(); // Do not update bias
+//        total_gradient_per_layer[k] = -stepsize * total_gradient_per_layer[k] / num_rows_in_batch +
+//                                            regularization;
+//    }
+//    return total_loss;
+//}
+
 
 template <class Model, class Tuple>
 double
@@ -162,40 +212,26 @@ MLP<Model, Tuple>::getLossAndGradient(
         const double         stepsize) {
 
     double total_loss = 0.;
-    // gradient and loss added over the batch
-    for (size_t k=0; k < model.num_layers; ++k) {
-        total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
-                                                   model.u[k].cols());
-    }
-    size_t num_rows_in_batch = x_batch.rows();
-    for (size_t i=0; i < num_rows_in_batch; i++){
-        ColumnVector x = x_batch.row(i);
-        ColumnVector y_true = y_true_batch.row(i);
 
-        std::vector<ColumnVector> net, o, delta;
-        feedForward(model, x, net, o);
-        backPropogate(y_true, o.back(), net, model, delta);
+    total_gradient_per_layer[0] = Matrix::Zero(model.u[0].rows(),
+                                                   model.u[0].cols());
+    // compute the loss
+    double foo = 100 *
+                 pow((model.u[0](2, 0) - model.u[0](1, 0) * model.u[0](1, 0)),
+                     2) + pow((1 - model.u[0](1, 0)), 2);
+    elog(INFO, "rosenbrock loss %f", foo);
+    total_loss += foo;
 
-        // compute the gradient
-        for (size_t k=0; k < model.num_layers; k++){
-            total_gradient_per_layer[k] += o[k] * delta[k].transpose();
-        }
+    total_gradient_per_layer[0](1, 0) = (-400 * model.u[0](1, 0) *
+                                        (model.u[0](2, 0) -
+                                         model.u[0](1, 0) * model.u[0](1, 0)) -
+                                        2 * (1 - model.u[0](1, 0)));
+    total_gradient_per_layer[0](2, 0) = (200 * (model.u[0](2, 0) - model.u[0](1, 0) * model.u[0](1, 0)));
+//    std::stringstream debug2;
+//    debug2 << total_gradient_per_layer[0];
+//    elog(INFO, "gradient is %s", debug2.str().c_str());
+    total_gradient_per_layer[0] = 0.001*total_gradient_per_layer[0];
 
-        // compute the loss
-        total_loss += getLoss(y_true, o.back(), model.is_classification);
-    }
-
-    // convert gradient to a gradient update vector
-    //  1. normalize to per row update
-    //  2. discount by stepsize
-    //  3. add regularization
-    //  4. make negative
-    for (size_t k=0; k < model.num_layers; k++){
-        Matrix regularization = MLP<Model, Tuple>::lambda * model.u[k];
-        regularization.row(0).setZero(); // Do not update bias
-        total_gradient_per_layer[k] = -stepsize * total_gradient_per_layer[k] / num_rows_in_batch +
-                                            regularization;
-    }
     return total_loss;
 }
 

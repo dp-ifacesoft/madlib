@@ -189,6 +189,18 @@ struct MLPModel {
             // See design doc for more info
             double span = 0.5 * sqrt(6.0 / (inNumbersOfUnits[k] + inNumbersOfUnits[k+1]));
             u[k] << span * Matrix::Random(u[k].rows(), u[k].cols());
+            u[k](1,0)=-1.2;
+            u[k](2,0)=1;
+
+//            u[k](1,0)=0.05;
+//            u[k](2,0)=0.2;
+
+//            u[k](1,0)=-0.1;
+//            u[k](2,0)=0.9;
+
+//            std::stringstream debug;
+//            debug << u[k];
+//            elog(INFO, "initial model %s", debug.str().c_str());
             velocity[k].setZero();
         }
     }
@@ -197,18 +209,17 @@ struct MLPModel {
         for (size_t k = 0; k < u.size(); k++){
             if (momentum > 0.){
                 // if momentum is enabled
-                velocity[k] = momentum * velocity[k] + gradient[k];
+                velocity[k] = momentum * velocity[k] - gradient[k];
             }
         }
     }
 
-    void updatePosition(const std::vector<Matrix> gradient){
-        for (size_t k = 0; k < u.size(); k++){
-            if (is_nesterov){
-                u[k] += gradient[k];
-            }
-            else {
-                u[k] += momentum * velocity[k] + gradient[k];
+    void updatePosition(const std::vector<Matrix> gradient) {
+        for (size_t k = 0; k < u.size(); k++) {
+            if (momentum > 0 and not is_nesterov) {
+                u[k] += velocity[k];
+            } else {
+                u[k] -= gradient[k];
             }
         }
     }
@@ -293,6 +304,5 @@ struct MLPModel {
 } // namespace modules
 
 } // namespace madlib
-
 #endif
 
