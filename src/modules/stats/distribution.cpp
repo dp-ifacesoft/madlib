@@ -55,6 +55,7 @@ vectorized_distribution_transition::run(AnyType &args) {
     }
 
     for (Index i = 0; i < indices.size(); i ++) {
+        std::stringstream debug;
         int index = indices(i);
         if (index < 0 || index >= levels(i)) {
             std::stringstream ss;
@@ -63,6 +64,8 @@ vectorized_distribution_transition::run(AnyType &args) {
             throw std::runtime_error(ss.str());
         }
         distributions(index, i) ++;
+        debug << distributions;
+        elog(INFO, debug.str().c_str());
     }
 
     return distributions;

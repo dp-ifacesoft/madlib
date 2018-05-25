@@ -952,7 +952,7 @@ def _calculate_oob_prediction(
         else:
             initialized_float_array = "NULL::integer[]"
         sql_create_oob_var_dist_view = """
-            CREATE VIEW {oob_var_dist_view} AS
+
             SELECT
                 gid,
                 {schema_madlib}.vectorized_distribution_agg(
@@ -992,16 +992,17 @@ def _calculate_oob_prediction(
         """.format(**locals())
     else:
         sql_create_oob_var_dist_view = """
-            CREATE VIEW {oob_var_dist_view} AS
+
             SELECT
                 gid,
                 NULL::float8[] AS cat_feature_distributions,
                 NULL::float8[] AS con_index_distributions
             FROM {cat_features_info_table}
         """.format(**locals())
-
+    rf_debug_nj = unique_string(desp='rf_debug_nj')
     plpy.notice("sql_create_oob_var_dist_view : " + str(sql_create_oob_var_dist_view))
-    plpy.execute(sql_create_oob_var_dist_view)
+    plpy.execute("CREATE VIEW {0} AS ".format(oob_var_dist_view)+sql_create_oob_var_dist_view)
+    plpy.execute("CREATE table {0} AS ".format(rf_debug_nj)+sql_create_oob_var_dist_view)
 
     sql_oob_predict = """
             INSERT INTO {oob_prediction_table}
@@ -1108,14 +1109,14 @@ def _calculate_variable_importance(
         importance_table, n_cat, n_con):
     if not is_classification:
         # squared error
-        score_expression = "-((oob_prediction - dep)^2)".format(**locals())
+        score_expression = "-((oob_prediction - dep)^2)"
     else:
         # misclassification
         score_expression = """
                 CASE WHEN dep = oob_prediction::integer
                     THEN 1.
                     ELSE 0.
-                END""".format(**locals())
+                END"""
 
     sample_score_view = unique_string()
     sql_create_sample_score_view = """

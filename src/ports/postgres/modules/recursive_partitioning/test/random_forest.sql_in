@@ -146,10 +146,10 @@ SELECT forest_train(
 \x on
 SELECT * from train_output_summary;
 SELECT * from train_output_group;
--- SELECT
---     assert(cat_var_importance[1] > con_var_importance[1], 'class should be important!'),
---     assert(cat_var_importance[1] > cat_var_importance[2], 'class should be important!')
--- FROM train_output_group;
+SELECT
+    assert(cat_var_importance[1] > con_var_importance[1], 'class should be important!'),
+    assert(cat_var_importance[1] > cat_var_importance[2], 'class should be important!')
+FROM train_output_group;
 
 -------------------------------------------------------------------------
 -- regression - using y to predict y for the sake of testing variable importance
