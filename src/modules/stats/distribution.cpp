@@ -30,6 +30,14 @@ vectorized_distribution_transition::run(AnyType &args) {
     MappedIntegerVector levels = args[2].getAs<MappedIntegerVector>();
     // tuple
     MappedIntegerVector indices = args[1].getAs<MappedIntegerVector>();
+            std::stringstream pdebug;
+        pdebug << levels;
+        elog(INFO, pdebug.str().c_str());
+            std::stringstream ndebug;
+        ndebug << indices;
+        elog(INFO, "indices\n");
+        elog(INFO, ndebug.str().c_str());
+
     if (indices.size() != levels.size()) {
         std::stringstream ss;
         ss << "size mismatch between indices levels: "
@@ -55,7 +63,6 @@ vectorized_distribution_transition::run(AnyType &args) {
     }
 
     for (Index i = 0; i < indices.size(); i ++) {
-        std::stringstream debug;
         int index = indices(i);
         if (index < 0 || index >= levels(i)) {
             std::stringstream ss;
@@ -64,9 +71,12 @@ vectorized_distribution_transition::run(AnyType &args) {
             throw std::runtime_error(ss.str());
         }
         distributions(index, i) ++;
+    }
+            elog(INFO, "distributions\n");
+
+        std::stringstream debug;
         debug << distributions;
         elog(INFO, debug.str().c_str());
-    }
 
     return distributions;
 }
@@ -75,7 +85,14 @@ vectorized_distribution_transition::run(AnyType &args) {
 AnyType
 vectorized_distribution_final::run(AnyType &args) {
     MutableNativeMatrix state = args[0].getAs<MutableNativeMatrix>();
+//         std::stringstream bdebug;
+//         bdebug << state;
+//         elog(INFO, bdebug.str().c_str());
+// elog(INFO, "AFTER AVG:\n");
     state /= state.sum();
+        // std::stringstream debug;
+        // debug << state;
+        // elog(INFO, debug.str().c_str());
     return state;
 }
 
