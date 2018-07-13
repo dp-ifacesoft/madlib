@@ -43,15 +43,12 @@ m4_include(`SQLCommon.m4')
 </div>
 
 @about
-Convert all feature columns in your table into an array in a single column.
+Convert feature columns in a table into an array in a single column.
 
-Given a table with varying number of columns, this function will create an
-output table that will contain the feature columns into an array. A summary
-table will be created and will contain the names of the features combined into
-array so that this process can be reversed using the function vec2cols.
-
-The columns that need NOT be included in the feature array need to be specified
-in the exclude_columns field.
+Given a table with a number of feature columns, this function will create an
+output table that contains the feature columns in an array. A summary
+table will also be created that contains the names of the features combined into
+array, so that this process can be reversed using the function vec2cols.
 
 @anchor cols2vec_usage
 @usage
@@ -79,25 +76,25 @@ cols2vec(
 Comma-separated string of column names or expressions to put into feature array.
 Can also be a '*' implying all columns are to be put into feature array (except
 for the ones included in the next argument that lists exclusions). Array columns
-in the source table are not supported in the 'list_of_features'. </dd>
+in the source table are not supported in the 'list_of_features' parameter. </dd>
 
-<dt>list_of_features_to_exclude</dt>
+<dt>list_of_features_to_exclude (optional)</dt>
 <dd>TEXT. Default NULL.
 Comma-separated string of column names to exclude from the feature array.  Use
 only when 'list_of_features' is '*'. </dd>
 
-<dt>cols_to_output</dt>
+<dt>cols_to_output (optional)</dt>
 <dd>TEXT. Default NULL.
 Comma-separated string of column names from the source table to keep in the
 output table, in addition to the feature array.  To keep all columns from the
-source table, use '*'. </dd>
+source table, use '*' for this parameter. </dd>
 
 </dl>
 
 @anchor cols2vec_example
 @par Examples
 
--# Create an input dataset and run the function
+-# Load sample data:
 <pre class="example">
 DROP TABLE IF EXISTS cols2vec;
 CREATE TABLE cols2vec (
@@ -113,20 +110,22 @@ INSERT INTO cols2vec  VALUES
 (2, 1, 0, 1, 0.3, 0.3),
 (3, 0, 0, 0, 0.1, 1.1),
 (4, 1, 1, 0, 0.9, 0.4);
-DROP TABLE IF EXISTS cols2vec_result, cols2vec_result_summary;
-SELECT cols2vec(
-      'cols2vec',                  -- input table
-      'cols2vec_result',           -- Output table
-      'feat1,feat2,feat3',         -- Comma Seperated List of Features
-      'id',                        -- Features To Exclude
-      'id,label'                   -- Columns to be included in output
-);
-SELECT * FROM cols2vec_result;
 </pre>
 
--# Expected output:
+-# Create feature array:
+<pre class="example">
+DROP TABLE IF EXISTS cols2vec_result, cols2vec_result_summary;
+SELECT madlib.cols2vec(
+      'cols2vec',               -- input table
+      'cols2vec_result',        -- output table
+      'feat1,feat2,feat3',      -- list of features
+       NULL,                    -- features to exclude
+      'id, label           '    -- columns from input table to be included in output
+);
+SELECT * FROM cols2vec_result ORDER BY id;
+</pre>
 <pre class="result">
- id | label | feature_vector
+ id | label | feature_vector 
 ----+-------+----------------
   1 |     0 | {1,1,0.5}
   2 |     1 | {0,1,0.3}
@@ -134,16 +133,45 @@ SELECT * FROM cols2vec_result;
   4 |     1 | {1,0,0.9}
 (4 rows)
 </pre>
-
--# Summary table
-<pre>
-SELECT * FROM cols2vec_result_summary
+View summary table:
+<pre class="example">
+SELECT * FROM cols2vec_result_summary;
 </pre>
 <pre class="result">
- source_table | list_of_features  | list_of_features_to_exclude |    feature_names
+ source_table | list_of_features  | list_of_features_to_exclude |    feature_names    
 --------------+-------------------+-----------------------------+---------------------
- cols2vec     | feat1,feat2,feat3 | id                          | {feat1,feat2,feat3}
-(1 row)
+ cols2vec     | feat1,feat2,feat3 | None                        | {feat1,feat2,feat3}
+</pre>
+
+-# The above result could be obtained in a similar way using the 'features_to_exclude' parameter:
+<pre class="example">
+DROP TABLE IF EXISTS cols2vec_result, cols2vec_result_summary;
+SELECT madlib.cols2vec(
+      'cols2vec',               -- input table
+      'cols2vec_result',        -- output table
+      '*',                      -- list of features
+      'id, label, other_col',   -- features to exclude
+      'id, label'               -- columns from input table to be included in output
+);
+SELECT * FROM cols2vec_result ORDER BY id;
+</pre>
+<pre class="result">
+ id | label | feature_vector 
+----+-------+----------------
+  1 |     0 | {1,1,0.5}
+  2 |     1 | {0,1,0.3}
+  3 |     0 | {0,0,0.1}
+  4 |     1 | {1,0,0.9}
+(4 rows)
+</pre>
+View summary table:
+<pre class="example">
+SELECT * FROM cols2vec_result_summary;
+</pre>
+<pre class="result">
+ source_table | list_of_features | list_of_features_to_exclude |    feature_names    
+--------------+------------------+-----------------------------+---------------------
+ cols2vec     | *                | id, label, other_col        | {feat1,feat2,feat3}
 </pre>
 */
 
