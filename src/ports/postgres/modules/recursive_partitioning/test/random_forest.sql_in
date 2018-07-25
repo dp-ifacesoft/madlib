@@ -82,6 +82,9 @@ SELECT forest_train(
 SELECT * from train_output_summary;
 SELECT * from train_output_group;
 
+-- Con features have 3 levels. This assert ensures cat features are dropped properly.
+SELECT assert(array_upper(oob_var_importance, 1) = array_upper(cat_n_levels, 1) + 3, 'Error') FROM train_output_group;
+
 -- regression with grouping
 -------------------------------------------------------------------------
 DROP TABLE IF EXISTS train_output, train_output_summary, train_output_group, train_output_poisson_count;
