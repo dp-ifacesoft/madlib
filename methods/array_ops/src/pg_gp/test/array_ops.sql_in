@@ -12,7 +12,7 @@
 ---------------------------------------------------------------------------
 CREATE TABLE data AS
 SELECT
-    '{1,2,3}'::float8[] AS an,
+    '{1,2,3}'::float81[] AS an,
     '{4,5,7}'::float8[] AS b;
 
 SELECT array_dot(
