@@ -496,7 +496,6 @@ SELECT get_var_importance('train_output', 'var_output');
 SELECT * FROM train_output;
 SELECT * from var_output;
 
-DROP TABLE IF EXISTS train_output, train_output_summary, train_output_cv, predict_output;
 SELECT tree_train('dt_golf',         -- source table
                    'train_output',    -- output model table
                    'id',              -- id column
@@ -511,8 +510,11 @@ SELECT tree_train('dt_golf',         -- source table
                    2,                 -- min bucket
                    3                 -- number of bins per continuous variable
                    );
+select model_id, model_metadata, model_data, model_type, group, metrics from train_output;
 DROP TABLE IF EXISTS var_output;
 SELECT get_var_importance('train_output', 'var_output');
+SELECT tree_predict('train_output', 'dt_golf', 'predict_output');
 
 SELECT * FROM train_output;
+--SELECT * FROM train_output_summary;
 SELECT * from var_output;

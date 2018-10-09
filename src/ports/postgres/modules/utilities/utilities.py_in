@@ -136,7 +136,7 @@ def num_samples(source_table):
 # ------------------------------------------------------------------------------
 
 
-def unique_string(desp='', **kwargs):
+def unique_string(desp='', prefix_has_temp=True, **kwargs):
     """
     Generate random remporary names for temp table and other names.
     It has a SQL interface so both SQL and Python functions can call it.
@@ -144,7 +144,8 @@ def unique_string(desp='', **kwargs):
     r1 = random.randint(1, 100000000)
     r2 = int(time.time())
     r3 = int(time.time()) % random.randint(1, 100000000)
-    u_string = "__madlib_temp_" + desp + str(r1) + "_" + str(r2) + "_" + str(r3) + "__"
+    prefix = "__madlib_temp_" if prefix_has_temp else "__madlib_"
+    u_string = prefix + desp + str(r1) + "_" + str(r2) + "_" + str(r3) + "__"
     return u_string
 # ------------------------------------------------------------------------------
 
@@ -173,6 +174,8 @@ NUMERIC = set(['smallint', 'integer', 'bigint', 'decimal', 'numeric',
 INTEGER = set(['smallint', 'integer', 'bigint'])
 TEXT = set(['text', 'varchar', 'character varying', 'char', 'character'])
 BOOLEAN = set(['boolean'])
+BYTEA = set(['bytea'])
+BYTEA8 = set(['bytea8'])
 INCLUDE_ARRAY = set([unique_string('__include_array__')])
 ONLY_ARRAY = set([unique_string('__only_array__')])
 ANY_ARRAY = set([unique_string('__any_array__')])

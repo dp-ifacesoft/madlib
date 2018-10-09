@@ -1,0 +1,272 @@
+# coding=utf-8
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+import plpy
+import json
+import time
+
+from utilities.utilities import _assert
+from utilities.utilities import add_postfix
+from utilities.utilities import is_platform_pg
+from utilities.utilities import madlib_version
+from utilities.utilities import is_valid_psql_type
+from utilities.utilities import ONLY_ARRAY
+from utilities.utilities import BYTEA, BYTEA8
+from utilities.utilities import unique_string
+from utilities.validate_args import get_cols
+from utilities.validate_args import table_exists
+from collections import OrderedDict
+
+m4_changequote(`<!', `!>')
+
+#TODO do not hardcode col names anywhere else
+#TODO talk to frank about col names
+MODEL_TABLE_COLS=OrderedDict([
+    ('model_id','int'),
+    ('grouping','text'),
+    ('model_type','text'),
+    ('model_data','bytea'),
+    ('model_metadata','JSON'),
+    ('metrics','JSON')
+    ])
+MODEL_TABLE_SUMMARY_COLS=OrderedDict([
+    ('model_id','serial'),
+    ('model_type','text'),
+    ('summary','JSON'),
+    ('start_training_time','timestamp'),
+    ('end_training_time','timestamp'),
+    ('model_name','text'),
+    ('description','text'),
+    ('madlib_version','text'),
+    ('__madlib_internal_id__','text')
+    ])
+
+
+class VersionedModelTableValidator():
+    def __init__(self, model_table):
+        self.model_table = model_table
+        self.model_table_summary = add_postfix(self.model_table, '_summary')
+        self.create_model_tables=False
+
+    def _is_valid_versioned_table(self, cols, expected_cols):
+        return len(cols)==len(expected_cols) and \
+               all(colname in expected_cols for colname in cols)
+
+    def validate_model_tables(self):
+        """
+        Check whether model_table and model_table_summary are valid versioned
+        model tables.  Returns if valid or non-existent, otherwise throws
+        exception.
+
+        @params:
+            model_table: Name of the output model table
+            create_tables_if_not_exist: If model_table and model_table_summary don't
+                exist, create them if this flag is set to True.
+        """
+        model_table_exists = table_exists(self.model_table)
+        model_table_summary_exists = table_exists(self.model_table_summary)
+        if model_table_exists and model_table_summary_exists:
+            # check if the two tables have specific columns
+            # First check for model_table cols and types.
+            model_table_cols = get_cols(self.model_table)
+            _assert(self._is_valid_versioned_table(model_table_cols, MODEL_TABLE_COLS),
+                "Unexpected columns found in model table {0}.".format(self.model_table))
+
+            # Now check for self.model_table_summary cols and types.
+            model_table_summary_cols = get_cols(self.model_table_summary)
+            _assert(self._is_valid_versioned_table(model_table_summary_cols,
+                        MODEL_TABLE_SUMMARY_COLS),
+                "Unexpected columns found in model summary table {0}.".format(
+                    self.model_table_summary))
+        elif model_table_exists or model_table_summary_exists:
+            # If only one of the two tables exists, is is invalid.
+            plpy.error("Table {0} does not exist.".format(
+                self.model_table_summary if model_table_exists else self.model_table))
+        else:
+            self.create_model_tables = True
+
+class VersionedModelWriter(object):
+    def __init__(self, schema_madlib, model_table, model_type, model_data_type,
+                 model_name='', description=''):
+        self.schema_madlib = schema_madlib
+        self.model_table = model_table
+        self.model_table_summary = add_postfix(model_table, '_summary')
+        self.model_type = model_type
+        self.model_name = model_name
+        self.description = description
+        self.model_data_type = model_data_type
+        self.start_training_time = None
+        self.end_training_time = None
+        validator = VersionedModelTableValidator(self.model_table)
+        validator.validate_model_tables()
+        if validator.create_model_tables:
+            self._create_model_tables()
+
+    def record_training_start_time():
+        self.start_training_time = time.time()
+
+    def record_training_end_time():
+        self.end_training_time = time.time()
+
+    def _create_model_tables(self):
+        if is_platform_pg():
+            distributed_by_clause = ''
+        else:
+            distributed_by_clause= 'DISTRIBUTED BY (model_id)'
+        model_table_cols = ', '.join(['{0} {1}'.format(colname, coltype)
+                    for colname, coltype in MODEL_TABLE_COLS.items()])
+        create_model_sql = """
+                CREATE TABLE {self.model_table}
+                ({model_table_cols})
+                {distributed_by_clause}
+            """.format(**locals())
+        plpy.execute(create_model_sql)
+
+        model_table_summary_cols = ', '.join(['{0} {1}'.format(colname, coltype)
+                    for colname, coltype in MODEL_TABLE_SUMMARY_COLS.items()])
+        create_model_summary_sql = """
+                CREATE TABLE {self.model_table_summary}
+                ({model_table_summary_cols})
+                {distributed_by_clause}
+           """.format(model_table_summary=self.model_table_summary, **locals())
+        plpy.execute(create_model_summary_sql)
+
+    def store_model(self, model_data, model_metadata, metrics,
+                    start_time, end_time, model_summary):
+        # TODO should we validate if model_data's type == self.model_data_type
+        model_id = self._store_model_table_summary(start_time, end_time, model_summary)
+        self._store_model_table(model_id, model_data, model_metadata, metrics)
+
+    # TODO think about adding start_time to __init__ or provide a way for users to call a function
+    # TODO add quote ident
+    # that starts and stops the timer
+    def _store_model_table_summary(self, start_time, end_time, model_summary):
+        model_summary = self._to_json(model_summary)
+        version = madlib_version(self.schema_madlib)
+        madlib_internal_id = unique_string(prefix_has_temp=False)
+
+        start_time = start_time if start_time else 'NULL'
+        end_time = end_time if end_time else 'NULL'
+        sql = """
+            INSERT INTO {self.model_table_summary}
+            (model_type, summary, start_training_time, end_training_time, model_name, description,
+            madlib_version, __madlib_internal_id__)
+            VALUES ('{self.model_type}', '{model_summary}', {start_time},
+                    {end_time}, '{self.model_name}', '{self.description}',
+                    '{version}', '{madlib_internal_id}')
+        """.format(**locals())
+        plpy.execute(sql)
+        model_id = plpy.execute("""
+                SELECT model_id
+                FROM {model_table_summary}
+                WHERE __madlib_internal_id__='{madlib_internal_id}'
+            """.format(model_table_summary=self.model_table_summary,
+                       madlib_internal_id=madlib_internal_id))[0]['model_id']
+        return model_id
+
+
+    def _store_model_table(self, model_id, model_data, model_metadata, metrics):
+        model_metadata = self._to_json(model_metadata)
+        metrics = self._to_json(metrics)
+        if is_valid_psql_type(self.model_data_type, ONLY_ARRAY) \
+                and type(model_data) == list:
+            model_data_query = 'array_send(ARRAY{0})'.format(model_data) #TODO may have performance problems. compare with writing this to a table
+        elif is_valid_psql_type(self.model_data_type, BYTEA8):
+            model_data_query = "{self.schema_madlib}.bytea8send($madlib${model_data}$madlib$)".format(**locals())
+        else:
+            plpy.error('Cannot write model to model table. Unsupported '
+                       'model data type {0}'.format(self.model_data_type)) #TODO improve this error messsage
+        sql = """
+            INSERT INTO {self.model_table}
+            (model_id, grouping, model_type, model_data, model_metadata, metrics)
+            VALUES ('{model_id}', NULL, '{self.model_type}', {model_data_query},
+                    '{model_metadata}', '{metrics}')
+        """.format(**locals())
+        plpy.execute(sql)
+
+    # TODO: Can we directly insert dicts to table instead of converting to json?
+    # TODO: can we use sql's to_json
+    def _to_json(self, json_dict):
+        if type(json_dict) == dict:
+            return json.dumps(json_dict)
+        return '{}'
+
+
+class VersionedModelReader():
+    def __init__(self, schema_madlib, model_table, model_data_type, model_id=None):
+        self.schema_madlib = schema_madlib
+        self.model_table = model_table
+        self.model_table_summary = add_postfix(model_table, '_summary')
+        self.model_data_type = model_data_type
+        validator = VersionedModelTableValidator(self.model_table)
+        validator.validate_model_tables()
+        self.model_id = self._get_model_id(model_id)
+        self._read_all_data()
+
+    def _get_model_id(self, model_id):
+        if model_id is not None:
+            return model_id
+        return plpy.execute("""
+            SELECT max(model_id) AS id FROM {self.model_table_summary}
+            """.format(self=self))[0]['id']
+
+    def _read_all_data(self):
+        self.model_data_dict = self._run_select_query(self.model_table)
+        self.model_summary_dict = self._run_select_query(self.model_table_summary)
+
+    def _run_select_query(self, table):
+        if is_valid_psql_type(self.model_data_type, ONLY_ARRAY):
+            model_data_query = '{schema_madlib}._double_array_recv(model_data)'.format(self.schema_madlib)
+        elif is_valid_psql_type(self.model_data_type, BYTEA8):
+            model_data_query = "{schema_madlib}.bytea_to_bytea8(model_data)".format(self.schema_madlib)
+        else:
+            plpy.error('Cannot read model from model table. Unsupported model data type {0}'.format(self.model_data_type)) #TODO improve this error messsage
+
+        res = plpy.execute("""
+                    SELECT model_id, metrics, model_metadata, model_type, {model_data_query}
+                    FROM {table}
+                    WHERE model_id={model_id}
+                """.format(model_id=self.model_id, **locals()))
+        if not res:
+            plpy.error("Model id ({0}) does not exist in {1}.".format(
+                self.model_id, table))
+        # Note that since this version does not support grouping, we can
+        # assume exactly one row to be the output of this query. Will change
+        # once grouping comes in.
+        return res[0]
+
+    def get_model_data(self):
+        return self.model_data_dict['model_data']
+
+    def get_metrics(self):
+        return self._from_json(self.model_data_dict['metrics'])
+
+    def get_model_metadata(self):
+        return self._from_json(self.model_data_dict['model_metadata'])
+
+    def get_summary(self):
+        return self._from_json(self.model_summary_dict['summary'])
+
+    def _from_json(json_str):
+        json_dict = dict()
+        try:
+            json_dict = json.loads(json_str)
+        except:
+            plpy.error("Invalid json string, cannot deserialize it.")
+        return json_dict

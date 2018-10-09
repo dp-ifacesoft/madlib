@@ -15,6 +15,7 @@ from itertools import groupby
 from collections import Iterable
 
 from internal.db_utils import quote_literal
+from internal.model_versioning import VersionedModelWriter
 
 from utilities.control import MinWarning
 from utilities.control import OptimizerControl
@@ -59,10 +60,10 @@ def _tree_validate_args(
     _assert(table_exists(training_table_name),
             "Decision tree error: Data table is missing.")
 
-    _assert(not table_exists(output_table_name, only_first_schema=True),
-            "Decision tree error: Output table already exists.")
-    _assert(not table_exists(add_postfix(output_table_name, "_summary"), only_first_schema=True),
-            "Decision tree error: Output summary table already exists.")
+    # _assert(not table_exists(output_table_name, only_first_schema=True),
+    #         "Decision tree error: Output table already exists.")
+    # _assert(not table_exists(add_postfix(output_table_name, "_summary"), only_first_schema=True),
+    #         "Decision tree error: Output summary table already exists.")
 
     _assert(columns_exist_in_table(training_table_name, [id_col_name]),
             "Decision tree error: ID column does not exist.")
@@ -411,11 +412,11 @@ def _build_tree(schema_madlib, is_classification, split_criterion,
                                   )[0]['count']
         cp = grp_key_to_cp.values()[0]
 
-        # _create_output_tables(...) is a general function
+        # _create_nonversioned_output_tables(...) is also used for grouping (without CV)
         # we need to let it know that right now it is called from CV.
         use_existing_tables = table_exists(output_table_name)  # create tables if it does not exist
         running_cv = True  # flag to indicate that cv fold ID needs to be included
-        _create_output_tables(list_of_features_to_exclude='',
+        _create_nonversioned_output_tables(list_of_features_to_exclude='',
                               **locals())
 # ------------------------------------------------------------------------------
 
@@ -536,12 +537,14 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
             _xvalidate(**locals())
 
         plpy.notice("Creating output tables")
-        _create_output_tables(**locals())
+        if grouping_cols:
+            _create_nonversioned_output_tables(**locals())
+        else:
+            _create_versioned_output_tables(**locals())
     return None
 # ------------------------------------------------------------
 
-
-def _create_output_tables(schema_madlib, training_table_name, output_table_name,
+def _create_nonversioned_output_tables(schema_madlib, training_table_name, output_table_name,
                           tree_states, bins, split_criterion,
                           id_col_name, dependent_variable, list_of_features,
                           list_of_features_to_exclude,
@@ -550,12 +553,12 @@ def _create_output_tables(schema_madlib, training_table_name, output_table_name,
                           grouping_cols=None,
                           use_existing_tables=False, running_cv=False,
                           n_folds=0, null_proxy=None, **kwargs):
-    if not grouping_cols:
-        _create_result_table(schema_madlib, tree_states[0],
-                             bins['cat_origin'], bins['cat_n'], bins['cat_features'],
-                             bins['con_features'], output_table_name,
-                             use_existing_tables, running_cv, n_folds)
-    else:
+
+    if not (grouping_cols or running_cv):
+        plpy.error("_create_nonversioned_output_tables must have either running_cv or grouping_cols set.")
+        return
+
+    if grouping_cols:
         _create_grp_result_table(
             schema_madlib, tree_states, bins, bins['cat_features'],
             bins['con_features'], output_table_name, cat_features_info_table,
@@ -570,6 +573,20 @@ def _create_output_tables(schema_madlib, training_table_name, output_table_name,
         failed_groups, is_classification, n_all_rows,
         n_rows, dep_list, all_cols_types, cp, grouping_cols, 1,
         use_existing_tables, n_folds, null_proxy)
+
+    if running_cv:
+        _create_result_table_cv(schema_madlib, tree_states[0],
+                                bins['cat_origin'], bins['cat_n'], bins['cat_features'],
+                                bins['con_features'], output_table_name,
+                                use_existing_tables, running_cv, n_folds)
+
+
+
+
+
+
+
+
 # -------------------------------------------------------------------------
 
 
@@ -786,8 +803,7 @@ def _get_bins(schema_madlib, training_table_name,
             cat_features=[])
 # ------------------------------------------------------------
 
-
-def _create_result_table(schema_madlib, tree_state,
+def _create_result_table_cv(schema_madlib, tree_state,
                          cat_origin, cat_n, cat_features,
                          con_features, output_table_name,
                          use_existing_tables=False, running_cv=False,
@@ -846,6 +862,117 @@ def _create_result_table(schema_madlib, tree_state,
         plpy.execute(sql_plan, [tree_state['tree_state'],
                                 tree_state['impurity_var_importance']])
 
+# ------------------------------------------------------------
+
+def _get_summary_dict(fields, **kwargs):
+    # TODO: check with rest of AA, if we want to change this
+    return { x : kwargs[x] for x in fields }
+
+    # commented lines are redundant with other columns
+    # (TODO: remove commented lines)
+        ## model_summary['method'] = 'tree_train'
+        #model_summary['is_classification'] = is_classification
+        #model_summary['source_table'] = source_table
+        ## model_summary['model_table'] = model_table
+        #model_summary['id_col_name'] = id_col_name
+        #model_summary['list_of_features'] = list_of_features
+        # model_summary['list_of_features_to_exclude'] = list_of_features_to_exclude
+        # model_summary['dependent_varname'] = dependent_varname
+        # model_summary['independent_varnames'] = cat_features + con_features
+        # model_summary['cat_features'] = cat_features
+        # model_summary['con_features'] = con_features
+        # model_summary['grouping_cols'] = grouping_cols
+        # model_summary['num_groups'] = num_all_groups
+        # model_summary['num_failed_groups'] = num_failed_groups
+        # model_summary['total_rows_processed'] = total_rows_processed
+        # model_summary['total_rows_skipped'] = total_rows_skipped
+        # model_summary['dependent_var_levels'] = dep_list
+        # model_summary['dependent_var_type'] = dependent_var_type
+        # model_summary['independent_var_types'] = independent_var_types
+        # model_summary['input_cp'] = input_cp
+        # model_summary['n_folds'] = n_folds
+        # model_summary['null_proxy'] = null_proxy
+
+def _create_versioned_output_tables(schema_madlib, training_table_name,
+                                    output_table_name, tree_states, bins,
+                                    split_criterion, id_col_name,
+                                    dependent_variable, list_of_features,
+                                    list_of_features_to_exclude,
+                                    is_classification, n_all_rows, n_rows,
+                                    dep_list, cp, all_cols_types,
+                                    cat_features_info_table,
+                                    grouping_cols=None,
+                                    use_existing_tables=False,
+                                    running_cv=False,
+                                    n_folds=0, null_proxy=None, **kwargs):
+
+    """ Create versioned repo and summary table with results
+
+    In the result table, we need the tree_state and also the categorical
+    sorted levels, which will be used in the printing and the prediction
+    functions.
+    """
+    tree_state = tree_states[0]
+    cat_origin = bins['cat_origin']
+    cat_n = bins['cat_n']
+    cat_features = bins['cat_features']
+    con_features = bins['con_features']
+    source_table = training_table_name
+    num_groups = 1
+    num_failed_groups = int(tree_state['finished'] != 1)  # 1 if failed, 0 if succeeded
+    total_rows_processed = n_rows
+    total_rows_skipped = n_all_rows - n_rows
+    input_cp = cp
+
+    depth = (tree_state['pruned_depth'] if 'pruned_depth' in tree_state
+             else tree_state['tree_depth'])
+
+    model_metadata = dict(tree_depth=depth, pruning_cp=tree_state['cp'],
+                          cat_levels_in_text=cat_origin)
+    metrics = dict(cat_n_levels=cat_n,
+                   impurity_var_importance=tree_state['impurity_var_importance'])
+
+    # dependent variables
+    #TODO: do we need to check for boolean type in dep list
+    dep_type = _get_dep_type(training_table_name, dependent_variable)
+    if dep_list:
+        if is_psql_boolean_type(dep_type):
+            # Special handling for boolean since Python booleans start with
+            # capitals (i.e False instead of false)
+            # Note:  dep_list is sorted, hence 'false' will be first
+            dep_list = ['false', 'true']
+
+    dependent_var_levels = dep_list
+    dependent_var_type = dep_type
+    dependent_varname = dependent_variable
+    independent_varnames = cat_features + con_features
+    independent_var_types = [ all_cols_types[c] for c in independent_varnames ]
+
+    # if isinstance(cp, Iterable):
+    #     cp_str = py_list_to_sql_string(cp, 'double precision')
+    # else:
+    #     cp_str = str(cp) + "::double precision"
+
+    # List of keys in JSON summary column. NOTE that these names must be the
+    # same as the corresponding variable names.
+    model_summary_fields = ['is_classification', 'source_table', 'id_col_name',
+                            'list_of_features', 'list_of_features_to_exclude',
+                            'dependent_varname', 'independent_varnames',
+                            'cat_features', 'con_features', 'grouping_cols',
+                            'num_groups', 'num_failed_groups',
+                            'total_rows_processed', 'total_rows_skipped',
+                            'dependent_var_levels', 'dependent_var_type',
+                            'independent_var_types', 'input_cp', 'n_folds',
+                            'null_proxy']
+    model_summary = _get_summary_dict(model_summary_fields, **locals())
+
+    model_data = tree_state['tree_state']
+
+    model_writer = VersionedModelWriter(schema_madlib, output_table_name,
+                                        'Decision Tree', 'bytea8',
+                                        model_name='something', description='sdf')
+    model_writer.store_model(model_data, model_metadata, metrics,
+                             None, None, model_summary)
 # ------------------------------------------------------------
 
 
@@ -1543,7 +1670,6 @@ def _get_dep_type(data_table, dep):
     else:
         return get_expr_type(dep, data_table)
 # ------------------------------------------------------------
-
 
 def _create_summary_table(
         schema_madlib, split_criterion,
