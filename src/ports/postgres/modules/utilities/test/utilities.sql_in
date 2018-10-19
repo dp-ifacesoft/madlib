@@ -88,3 +88,9 @@ FROM (
 SELECT
     id, id_2, temperature, "len$$'%*()gth", windy, class
 FROM dt_golf2;
+
+select assert(
+    array_eq(
+        _double_array_recv(bytea8send(bytea_to_bytea8(array_send(ARRAY[1.234234234234,2,3.2123123123,4.3,5.4,6.4,6]::double precision[]))), 'double precision'::regtype::int),
+        ARRAY[1.234234234234,2,3.2123123123,4.3,5.4,6.4,6]::double precision[]),
+'The converted array is not the same');

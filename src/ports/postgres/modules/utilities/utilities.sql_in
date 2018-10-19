@@ -351,6 +351,22 @@ CREATE TYPE MADLIB_SCHEMA.bytea8(
 );
 ')
 
+/*
+  Function to convert bytea to madlib.bytea8
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bytea_to_bytea8(bytea)
+RETURNS MADLIB_SCHEMA.bytea8 AS 'byteasend'
+LANGUAGE internal IMMUTABLE STRICT
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+/*
+  Function to convert bytea to double precision array
+*/
+  CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._double_array_recv(bytea, integer)
+RETURNS double precision[]
+AS 'MODULE_PATHNAME', 'double_array_recv'
+LANGUAGE C IMMUTABLE STRICT;
+
 /**
  * @brief Get all column names except dependent variable
  */
