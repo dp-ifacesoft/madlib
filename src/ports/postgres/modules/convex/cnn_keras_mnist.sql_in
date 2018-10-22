@@ -53,130 +53,61 @@ RETURNS VOID AS $$
     import scipy.io.matlab as mat
     import scipy.misc as misc
 
-    n_classes = 365
+    n_classes = 10
 
     def create_model_architecture(n_classes):
         model = Sequential()
 
-        model.add(ZeroPadding2D((1, 1), input_shape=(224,224,3)))
-        model.add(Conv2D(64, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(64, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(128, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(128, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(256, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(256, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(256, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-
+        # This was the working network for 1-D mnist dataset
+        model.add(Dense(100, activation='relu', input_shape=(40,40,1)))
+        model.add(Dropout(0.2))
         model.add(Flatten())
-        model.add(Dense(4096))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(4096))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(128))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(365))
-        model.add(Activation('softmax'))
-        sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
-        model.summary()
+        model.add(Dense(n_classes, activation='softmax'))
 
-        model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
+        # This was the working network for CIFAR-10 dataset
+        #model.add(Conv2D(32, kernel_size=(3, 3),
+        #          activation='relu',
+        #          input_shape=(40,40,1,)))
+        #model.add(MaxPooling2D(pool_size=(2, 2)))
+        #model.add(Dropout(0.25))
+        #model.add(Flatten())
+        #model.add(Dense(n_classes, activation='softmax'))
 
-#        model = Sequential()
-#
-#        # This was the working network for 1-D mnist dataset
-#        model.add(Dense(100, activation='relu', input_shape=(40,40,1)))
-#        model.add(Dropout(0.2))
-#        model.add(Flatten())
-#        model.add(Dense(n_classes, activation='softmax'))
-#
-#        # This was the working network for CIFAR-10 dataset
-#        #model.add(Conv2D(32, kernel_size=(3, 3),
-#        #          activation='relu',
-#        #          input_shape=(40,40,1,)))
-#        #model.add(MaxPooling2D(pool_size=(2, 2)))
-#        #model.add(Dropout(0.25))
-#        #model.add(Flatten())
-#        #model.add(Dense(n_classes, activation='softmax'))
-
-#        model.compile(loss='categorical_crossentropy',
-#                      optimizer=Adam(),
-#                      metrics=['categorical_accuracy'])
+        model.compile(loss='categorical_crossentropy',
+                      optimizer=Adam(),
+                      metrics=['categorical_accuracy'])
         return model
 
     model = create_model_architecture(n_classes)
     ##########################################################################
     # These variables are for model evaluation
     #(x_train, y_train), (x_test, y_test) = cifar10.load_data()
-    #path='/home/gpadmin/training_and_validation_batches'
-    #data_key = 'affNISTdata'
-    #all_x_train = np.ndarray((0,1600))
-    #all_y_train = np.ndarray((0,1))
+    path='/home/gpadmin/training_and_validation_batches'
+    data_key = 'affNISTdata'
+    all_x_train = np.ndarray((0,1600))
+    all_y_train = np.ndarray((0,1))
 
 #    for i in range(1,20):
-#    for i in range(1,2):
-#        f = str(i) + '.mat'
-#        #plpy.info('file {0} being processed'.format(f))
-#        full_path = os.path.join(path, f)
-#        train_batch=mat.loadmat(full_path)
-#        x_train = train_batch[data_key][0][0][2].transpose()
-#        y_train = train_batch[data_key][0][0][5].transpose()
-#        all_x_train=np.concatenate((all_x_train, x_train))
-#        all_y_train=np.concatenate((all_y_train, y_train))
+    for i in range(1,2):
+        f = str(i) + '.mat'
+        #plpy.info('file {0} being processed'.format(f))
+        full_path = os.path.join(path, f)
+        train_batch=mat.loadmat(full_path)
+        x_train = train_batch[data_key][0][0][2].transpose()
+        y_train = train_batch[data_key][0][0][5].transpose()
+        all_x_train=np.concatenate((all_x_train, x_train))
+        all_y_train=np.concatenate((all_y_train, y_train))
 
-#    num_train_examples = all_x_train.shape[0]
-#    all_x_train = all_x_train.reshape(num_train_examples, 40,40,1)
-#    all_x_train = all_x_train.astype('float32')
-#    all_x_train /= 255.0
-#    all_y_train = keras.utils.to_categorical(all_y_train, n_classes)
-#    plpy.info('Train Table : {0} **********************************************************'.format(source_table))
-#    plpy.info('X shape : {0}'.format(all_x_train.shape))
-#    plpy.info('Y shape : {0}'.format(all_y_train.shape))
-#    agg_scores = []
-#    agg_scores.append(model.evaluate(all_x_train, all_y_train, verbose=0)[1])
-
+    num_train_examples = all_x_train.shape[0]
+    all_x_train = all_x_train.reshape(num_train_examples, 40,40,1)
+    all_x_train = all_x_train.astype('float32')
+    all_x_train /= 255.0
+    all_y_train = keras.utils.to_categorical(all_y_train, n_classes)
+    plpy.info('Train Table : {0} **********************************************************'.format(source_table))
+    plpy.info('X shape : {0}'.format(all_x_train.shape))
+    plpy.info('Y shape : {0}'.format(all_y_train.shape))
+    agg_scores = []
+    agg_scores.append(model.evaluate(all_x_train, all_y_train, verbose=0)[1])
     ###########################################################################
 
     #sql_test_x = """
@@ -241,12 +172,12 @@ RETURNS VOID AS $$
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         plpy.info('Time elapsed since start of iter 0: {1}'.format(i, iter_endtime-start_time))
-#        model_eval = create_model_architecture(n_classes)
-#        model_eval.set_weights([np.array(a) for a in json.loads(model_weights)])
-#        agg_score = model_eval.evaluate(all_x_train, all_y_train, verbose=0)[1]
-#        #agg_score = model_eval.evaluate(x_train, y_train, verbose=0)[1]
-#        plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
-#        agg_scores.append(agg_score)
+        model_eval = create_model_architecture(n_classes)
+        model_eval.set_weights([np.array(a) for a in json.loads(model_weights)])
+        agg_score = model_eval.evaluate(all_x_train, all_y_train, verbose=0)[1]
+        #agg_score = model_eval.evaluate(x_train, y_train, verbose=0)[1]
+        plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
+        agg_scores.append(agg_score)
 
     plan = plpy.prepare("""
         drop table if exists {0};
@@ -295,16 +226,15 @@ start = time.time()
 if ind_var == None:
    return None
 #plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
-x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
+x_train = np.array(ind_var).reshape(len(ind_var), 40,40,1)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255.0
-
 y_train = np.array(dep_var)
-y_train = keras.utils.to_categorical(y_train, 365)
-#plpy.info("y train shape is {0}".format(y_train.shape))
+y_train = keras.utils.to_categorical(y_train, 10)
+plpy.info("y train shape is {0}".format(y_train.shape))
 mid = time.time()
 keras_model.fit(x_train, y_train,
-               batch_size=64,
+               batch_size=100,
                epochs=1,
                verbose=0)
 end = time.time()
@@ -335,7 +265,7 @@ weights2 = [np.array(a) for a in json.loads(state2)]
 ## This is a simple merge where we assume each segment has *equal* number of
 ## rows. If it is not the case, we must do a weighted avg, and should store
 ## the number of rows info somewhere.
-merged_weights = [((a+b)).tolist() for a, b in zip(weights1, weights2)]
+merged_weights = [((a+b)/2.0).tolist() for a, b in zip(weights1, weights2)]
 return json.dumps(merged_weights)
 $$
 LANGUAGE plpythonu
@@ -345,9 +275,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_final(
     state JSON
 ) RETURNS JSON AS
 $$
-weights1 = [np.array(a) for a in json.loads(state)]
-normalized_weights=[(a/20).tolist() for a in weights1]
-return json.dumps(normalized_weights)
+return state
 $$
 LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
