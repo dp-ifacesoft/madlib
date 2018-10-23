@@ -47,11 +47,9 @@ RETURNS VOID AS $$
 
     from keras.models import Sequential
     from keras.datasets import mnist, cifar10
-    from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
-    from keras.optimizers import Adam
+    from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadding2D, Activation
+    from keras.optimizers import Adam, SGD
     from keras import backend as keras_backend
-    import scipy.io.matlab as mat
-    import scipy.misc as misc
 
     n_classes = 365
 
@@ -120,7 +118,7 @@ RETURNS VOID AS $$
         model.add(Dense(365))
         model.add(Activation('softmax'))
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
-        model.summary()
+        # model.summary()
 
         model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
 
@@ -275,8 +273,8 @@ import keras
 import json
 import time
 from keras.models import Sequential
-from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
-from keras.optimizers import Adam
+from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadding2D, Activation
+from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
 from keras import backend as keras_backend
 
@@ -288,9 +286,12 @@ else:
 keras_model = model_from_json(architecture)
 keras_model.set_weights([np.array(a) for a in json.loads(serialized_state)])
 # We must run model.compile again, after obtaining the architecutre.
-keras_model.compile(loss='categorical_crossentropy',
-              optimizer=Adam(),
-              metrics=['categorical_accuracy'])
+keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+    loss='categorical_crossentropy',
+    metrics=['accuracy'])
+#keras_model.compile(loss='categorical_crossentropy',
+#              optimizer=Adam(),
+#              metrics=['categorical_accuracy'])
 start = time.time()
 if ind_var == None:
    return None
@@ -304,7 +305,7 @@ y_train = keras.utils.to_categorical(y_train, 365)
 #plpy.info("y train shape is {0}".format(y_train.shape))
 mid = time.time()
 keras_model.fit(x_train, y_train,
-               batch_size=64,
+               batch_size=32,
                epochs=1,
                verbose=0)
 end = time.time()
