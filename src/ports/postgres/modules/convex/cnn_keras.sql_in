@@ -44,6 +44,7 @@ RETURNS VOID AS $$
     import pandas as pd
     import time
     import os
+    import sys
 
     from keras.models import Sequential
     from keras.datasets import mnist, cifar10
@@ -51,7 +52,7 @@ RETURNS VOID AS $$
     from keras.optimizers import Adam, SGD
     from keras import backend as keras_backend
 
-    n_classes = 365
+    n_classes = 26
 
     def create_model_architecture(n_classes):
         model = Sequential()
@@ -106,16 +107,7 @@ RETURNS VOID AS $$
         model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
         model.add(Flatten())
-        model.add(Dense(4096))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(4096))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(128))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(365))
+        model.add(Dense(26))
         model.add(Activation('softmax'))
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
         # model.summary()
@@ -215,6 +207,39 @@ RETURNS VOID AS $$
 
     ###########################################################################
 
+    #sql_test_x = """
+    #    SELECT independent_varname as x, dependent_varname as y FROM {0}
+    #    """.format(test_table)
+    #plpy.info('Test sql is : {0}'.format(sql_test_x))
+    #testData = plpy.execute(sql_test_x)
+
+
+    #all_x_train = np.ndarray((0,150528))
+    #all_y_train = np.ndarray((0,1))
+    #for i in range(len(testData)):
+    #    x_train = np.asarray(testData[i]['x'])
+    #    y_train = np.asarray(testData[i]['y'])
+    #    #plpy.info('i : {0}'.format(i))
+    #    #plpy.info('X shape : {0}'.format(x_train.shape))
+    #    #plpy.info('Y shape : {0}'.format(y_train.shape))
+    #    all_x_train=np.concatenate((all_x_train, x_train))
+    #    all_y_train=np.concatenate((all_y_train, y_train))
+
+    #num_train_examples = all_x_train.shape[0]
+    #all_x_train = all_x_train.reshape(num_train_examples, 224,224,3)
+    #all_x_train = all_x_train.astype('float32')
+    #all_y_train = all_y_train.reshape(num_train_examples)
+    #plpy.info('X shape : {0}'.format(all_x_train.shape))
+    #plpy.info('Y shape : {0}'.format(all_y_train.shape))
+    #all_x_train /= 255.0
+    #all_y_train = keras.utils.to_categorical(all_y_train, n_classes)
+    #agg_scores = []
+    #eval_start = time.time()
+    #agg_scores.append(model.evaluate(all_x_train, all_y_train, verbose=0)[1])
+    #eval_time = time.time()
+    #plpy.info("time to evaluate model = {0}".format(eval_time-eval_start))
+    #plpy.info(agg_scores)
+
     sql = """
         SELECT MADLIB_SCHEMA.cnn_keras_step(
             independent_varname::DOUBLE PRECISION[],
@@ -226,8 +251,11 @@ RETURNS VOID AS $$
         """.format(model.to_json(), source_table)
 
     update_plan = plpy.prepare(sql, ["JSON"])
+    plpy.info("model arch is in place")
+    #model_weights = [a.shape for a in model.get_weights()]
+    #plpy.info(model_weights)
     model_weights = json.dumps([a.tolist() for a in model.get_weights()])
-
+    plpy.info(sys.getsizeof(model_weights))
     start_time = time.time()
     for i in range(N_ITERATIONS):
         iter_start_time = time.time()
@@ -239,12 +267,12 @@ RETURNS VOID AS $$
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         plpy.info('Time elapsed since start of iter 0: {1}'.format(i, iter_endtime-start_time))
-#        model_eval = create_model_architecture(n_classes)
-#        model_eval.set_weights([np.array(a) for a in json.loads(model_weights)])
-#        agg_score = model_eval.evaluate(all_x_train, all_y_train, verbose=0)[1]
-#        #agg_score = model_eval.evaluate(x_train, y_train, verbose=0)[1]
-#        plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
-#        agg_scores.append(agg_score)
+        model_eval = create_model_architecture(n_classes)
+        model_eval.set_weights([np.array(a) for a in json.loads(model_weights)])
+        agg_score = model_eval.evaluate(all_x_train, all_y_train, verbose=0)[1]
+        #agg_score = model_eval.evaluate(x_train, y_train, verbose=0)[1]
+        plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
+        agg_scores.append(agg_score)
 
     plan = plpy.prepare("""
         drop table if exists {0};
@@ -269,6 +297,7 @@ $$
 import itertools
 import numpy as np
 
+import plpy
 import keras
 import json
 import time
@@ -284,6 +313,8 @@ if not state:
 else:
     serialized_state = state
 keras_model = model_from_json(architecture)
+#plpy.info("Transition STARTED")
+start = time.time()
 keras_model.set_weights([np.array(a) for a in json.loads(serialized_state)])
 # We must run model.compile again, after obtaining the architecutre.
 keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
@@ -292,7 +323,6 @@ keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
 #keras_model.compile(loss='categorical_crossentropy',
 #              optimizer=Adam(),
 #              metrics=['categorical_accuracy'])
-start = time.time()
 if ind_var == None:
    return None
 #plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
@@ -301,19 +331,22 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 x_train /= 255.0
 
 y_train = np.array(dep_var)
-y_train = keras.utils.to_categorical(y_train, 365)
+y_train = keras.utils.to_categorical(y_train, 26)
 #plpy.info("y train shape is {0}".format(y_train.shape))
 mid = time.time()
+plpy.info("will try to fit now")
 keras_model.fit(x_train, y_train,
                batch_size=32,
                epochs=1,
                verbose=0)
 end = time.time()
+plpy.info("done with fit")
 weights_in_list = [a.tolist() for a in keras_model.get_weights()]
 weights_in_json = json.dumps(weights_in_list)
 before_return = time.time()
-#plpy.info("times = {0}, {1}, {2}".format(mid-start, end-mid, before_return-end))
+plpy.info("times = {0}, {1}, {2}".format(mid-start, end-mid, before_return-end))
 keras_backend.clear_session()
+#plpy.info("TRANSITION done.")
 return weights_in_json
 
 $$
@@ -346,8 +379,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_final(
     state JSON
 ) RETURNS JSON AS
 $$
+import json
+import numpy as np
 weights1 = [np.array(a) for a in json.loads(state)]
-normalized_weights=[(a/20).tolist() for a in weights1]
+normalized_weights=[(a/1).tolist() for a in weights1]
 return json.dumps(normalized_weights)
 $$
 LANGUAGE plpythonu
