@@ -2567,3 +2567,58 @@ of the response.
         help_string = "No such option. Use {schema_madlib}.tree_predict('usage')"
     return help_string.format(schema_madlib=schema_madlib)
 # ------------------------------------------------------------
+
+
+def boosted_tree_train(schema_madlib, training_table_name, output_table_name,
+               id_col_name, dependent_variable, list_of_features, **kwargs):
+
+    # msg_level = "notice"
+    # split_criterion = 'gini'
+    # max_depth = 1
+    # min_split = 20
+    # min_bucket = 6
+    # n_bins = 20
+    # grouping_cols = ''
+    # weights = '1'
+
+    plpy.execute(""" DROP TABLE IF EXISTS temp_boosted """.format(**locals()))
+    plpy.execute(""" CREATE TABLE temp_boosted AS SELECT {id_col_name}, {dependent_variable}, {list_of_features} FROM boston """.format(**locals()))
+
+    for i in range(3):
+        plpy.execute(""" DROP TABLE IF EXISTS {output_table_name}, {output_table_name}_summary, prediction_results""".format(**locals()))
+
+        plpy.execute(""" SELECT {schema_madlib}.tree_train(
+                'temp_boosted',
+                '{output_table_name}',
+                '{id_col_name}',
+                '{dependent_variable}',
+                '{list_of_features}', NULL, NULL, NULL, NULL, 1
+            )""".format(**locals()))
+        plpy.info(plpy.execute(""" SELECT pruning_cp, cat_levels_in_text, cat_n_levels, impurity_var_importance, tree_depth FROM {output_table_name}; """.format(**locals())))
+        plpy.info(plpy.execute(""" SELECT * FROM {output_table_name}_summary """.format(**locals())))
+        plpy.info("")
+
+        plpy.execute(""" SELECT {schema_madlib}.tree_predict(
+                '{output_table_name}',
+                '{training_table_name}',
+                'prediction_results',
+                'response');
+            """.format(**locals()))
+        plpy.info(plpy.execute(""" SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable}
+                         FROM prediction_results p, {training_table_name} s
+                         WHERE s.{id_col_name} = p.{id_col_name} ORDER BY {id_col_name} LIMIT 2;
+            """.format(**locals())))
+
+
+        plpy.execute(""" UPDATE temp_boosted SET {dependent_variable} = res
+                         FROM  (
+                            SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable},
+                                   {dependent_variable} - estimated_{dependent_variable} AS res
+                            FROM prediction_results p, {training_table_name} s
+                            WHERE s.{id_col_name} = p.{id_col_name}
+                            ) q
+                         WHERE q.{id_col_name} = temp_boosted.{id_col_name}
+            """.format(**locals()))
+
+        plpy.info(plpy.execute(""" SELECT * FROM temp_boosted ORDER BY {id_col_name} LIMIT 2""".format(**locals())))
+

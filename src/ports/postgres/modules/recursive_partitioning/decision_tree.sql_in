@@ -2504,3 +2504,20 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._tree_misclassified(
                                   use_existing_tables, k)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.boosted_tree_train(
+    training_table_name         TEXT,
+    output_table_name           TEXT,
+    id_col_name                 TEXT,
+    dependent_variable          TEXT,
+    list_of_features            TEXT
+) RETURNS VOID AS $$
+    PythonFunctionBodyOnly(recursive_partitioning, decision_tree)
+    with AOControl(False):
+        decision_tree.boosted_tree_train(schema_madlib, training_table_name, output_table_name,
+                                 id_col_name, dependent_variable, list_of_features)
+$$ LANGUAGE plpythonu VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+-- -------------------------------------------------------------------------
+
