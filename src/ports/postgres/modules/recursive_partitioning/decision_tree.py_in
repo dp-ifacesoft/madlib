@@ -912,6 +912,11 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     sorted levels, which will be used in the printing and the prediction
     functions.
     """
+    # TODO: Change this when grouping is supported for versioned tables.
+    num_all_groups = 1
+    method = 'tree_train'
+    model_table = output_table_name
+
     tree_state = tree_states[0]
     cat_origin = bins['cat_origin']
     cat_n = bins['cat_n']
@@ -933,25 +938,26 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
                    impurity_var_importance=tree_state['impurity_var_importance'])
 
     # dependent variables
-    #TODO: do we need to check for boolean type in dep list
     dep_type = _get_dep_type(training_table_name, dependent_variable)
     if dep_list:
         if is_psql_boolean_type(dep_type):
             # Special handling for boolean since Python booleans start with
             # capitals (i.e False instead of false)
             # Note:  dep_list is sorted, hence 'false' will be first
-            dep_list = ['false', 'true']
+            dependent_var_levels = "'false, true'"
+        else:
+            dependent_var_levels = '$__dep_list__${0}$__dep_list__$'.format(
+                ','.join(map(str, dep_list)))
+    else:
+        dependent_var_levels = "NULL"
 
-    dependent_var_levels = dep_list
     dependent_var_type = dep_type
     dependent_varname = dependent_variable
-    independent_varnames = cat_features + con_features
-    independent_var_types = [ all_cols_types[c] for c in independent_varnames ]
+    independent_var_types = ','.join([all_cols_types[c] for c in cat_features+con_features])
+    independent_varnames = ','.join(cat_features+con_features)
 
-    # if isinstance(cp, Iterable):
-    #     cp_str = py_list_to_sql_string(cp, 'double precision')
-    # else:
-    #     cp_str = str(cp) + "::double precision"
+    cat_features = ','.join(cat_features)
+    con_features = ','.join(con_features)
 
     # List of keys in JSON summary column. NOTE that these names must be the
     # same as the corresponding variable names.
@@ -963,16 +969,17 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
                             'total_rows_processed', 'total_rows_skipped',
                             'dependent_var_levels', 'dependent_var_type',
                             'independent_var_types', 'input_cp', 'n_folds',
-                            'null_proxy']
+                            'null_proxy', 'num_all_groups', 'method',
+                            'model_table']
     model_summary = _get_summary_dict(model_summary_fields, **locals())
 
     model_data = tree_state['tree_state']
 
     model_writer = VersionedModelWriter(schema_madlib, output_table_name,
                                         'Decision Tree', 'bytea8',
-                                        model_name='something', description='sdf')
-    model_writer.store_model(model_data, model_metadata, metrics,
-                             None, None, model_summary)
+                                        name='something', description='sdf')
+    model_writer.store_model(model_data, model_metadata, metrics, model_summary)
+
 # ------------------------------------------------------------
 
 
@@ -1695,8 +1702,8 @@ def _create_summary_table(
                 ','.join(map(str, dep_list)))
     else:
         dep_list_str = "NULL"
-    indep_type = ', '.join(all_cols_types[c] for c in cat_features + con_features)
-    independent_varnames = ','.join(cat_features + con_features)
+    indep_type = ', '.join(all_cols_types[c] for c in cat_features+con_features)
+    independent_varnames = ','.join(cat_features+con_features)
     cat_features_str = ','.join(cat_features)
     con_features_str = ','.join(con_features)
     if grouping_cols:
@@ -1788,7 +1795,7 @@ def _validate_predict(schema_madlib, model, source, output, use_existing_tables)
     _assert(
         columns_exist_in_table(
             model,
-            ["tree", "cat_levels_in_text", "cat_n_levels"],
+            ["model_data", "cat_levels_in_text", "cat_n_levels"],
             schema_madlib),
         "Decision tree error: Invalid model table ({0})".format(model))
     _assert(
@@ -1874,7 +1881,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
         sql = header + """
             SELECT {id_col_name},
                    {schema_madlib}._predict_dt_response(
-                        tree,
+                        model_data,
                         {cat_features_str}::INTEGER[],
                         {con_features_str}::DOUBLE PRECISION[]) as {pred_name}
             FROM {source} as s
@@ -1905,7 +1912,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
                            -- _predict_dt_response returns 0-based indexing.
                            -- Hence the "+ 1" (DB by default uses 1-based indexing)
                            (%s)[{schema_madlib}._predict_dt_response (
-                                   tree,
+                                   model_data,
                                    {cat_features_str}::INTEGER[],
                                    {con_features_str}::DOUBLE PRECISION[]) + 1]::TEXT
                            as {pred_name}
@@ -1924,7 +1931,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
                     %s
                     FROM (
                         SELECT {id_col_name},
-                               {schema_madlib}._predict_dt_prob(tree,
+                               {schema_madlib}._predict_dt_prob(model_data,
                                     {cat_features_str}::INTEGER[],
                                     {con_features_str}::DOUBLE PRECISION[])
                                         AS {temp_col}

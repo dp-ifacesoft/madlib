@@ -17,17 +17,18 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import plpy
+import datetime
 import json
-import time
+import plpy
+import types
 
 from utilities.utilities import _assert
 from utilities.utilities import add_postfix
-from utilities.utilities import is_platform_pg
-from utilities.utilities import madlib_version
-from utilities.utilities import is_valid_psql_type
-from utilities.utilities import ONLY_ARRAY
 from utilities.utilities import BYTEA, BYTEA8
+from utilities.utilities import is_platform_pg
+from utilities.utilities import is_valid_psql_type
+from utilities.utilities import madlib_version
+from utilities.utilities import ONLY_ARRAY
 from utilities.utilities import unique_string
 from utilities.validate_args import get_cols
 from utilities.validate_args import table_exists
@@ -36,33 +37,443 @@ from collections import OrderedDict
 m4_changequote(`<!', `!>')
 
 #TODO do not hardcode col names anywhere else
-#TODO talk to frank about col names
-MODEL_TABLE_COLS=OrderedDict([
+MODEL_TABLE_COLS = OrderedDict([
     ('model_id','int'),
-    ('grouping','text'),
+    ('grouping_values','text'),
     ('model_type','text'),
     ('model_data','bytea'),
     ('model_metadata','JSON'),
     ('metrics','JSON')
     ])
-MODEL_TABLE_SUMMARY_COLS=OrderedDict([
+MODEL_TABLE_SUMMARY_COLS = OrderedDict([
     ('model_id','serial'),
     ('model_type','text'),
     ('summary','JSON'),
     ('start_training_time','timestamp'),
     ('end_training_time','timestamp'),
-    ('model_name','text'),
+    ('name','text'),
     ('description','text'),
     ('madlib_version','text'),
     ('__madlib_internal_id__','text')
     ])
 
+class VersionedModelViewCreator(object):
+    """
+        Class to create a view, given a model_id and a model repo table.
+        create_view() in this class creates two views for a model_id in
+        a model repo table. One view corresponds to the model table, and
+        the other to model summary table.
+    """
+    def __init__(self, schema_madlib, model_repo_table, model_id, view_name,
+                 model_data_type=None):
+        """
+            Initialize necessary parameters for view creation.
+            @params:
+                schema_madlib: schema where madlib is installed
+                model_repo_table: Name of the model repository table
+                model_id: Model ID to create view for in the repository table
+                view_name: Name of the output view that would correspond
+                           to the model table. Another view with '_summary'
+                           suffixed to view_name will be created for the
+                           corresponding summary table.
+                model_data_type: The type of the column of the model_data in
+                                 the view. Default type is double precision[].
+        """
+        self.schema_madlib = schema_madlib
+        self.model_repo_table = model_repo_table
+        self.model_id = model_id
+        self.repo_view_name = view_name
+        self.summary_view_name = add_postfix(view_name ,'_summary')
+        self.model_repo_summary_table = add_postfix(model_repo_table, '_summary')
+        self.model_data_type = 'double precision[]' if not model_data_type \
+                                    else model_data_type
+        model_validator = VersionedModelTableValidator(self.model_repo_table)
+        model_validator.validate_model_tables()
 
-class VersionedModelTableValidator():
+    def _get_view_creation_header(self, input_table_name, row_name, view_name):
+        """
+            Return part of the SQL (header) necessary for creating view.
+        """
+        view_header = """
+            DROP VIEW IF EXISTS {view_name};
+            CREATE VIEW {view_name} AS
+            WITH {row_name} AS (
+                SELECT * FROM {input_table_name}
+                WHERE model_id={self.model_id})
+        """.format(self=self, row_name=row_name, view_name=view_name,
+                   input_table_name=input_table_name)
+        return view_header
+
+    def create_view(self, model_metadata_types_dict=None,
+                    metrics_colstypes_dict=None,
+                    summary_colstypes_dict=None):
+        """
+            Create views for model table and summary table. The columns in the
+            views are mostly created from various JSON blobs in the model
+            repository and summary tables. The only column that is not created
+            from a JSON element is the model_data column in the model table
+            view. This function tries to automatically figure out the types
+            of columns created for each key in any given JSON blob. The types
+            of the columns in the resulting views can be overridden if need be.
+            @params:
+                model_metadata_types_dict: Override types for keys in the
+                    model_metadata JSON column in model repository table.
+                metrics_colstypes_dict: Override types for keys in the
+                    metrics JSON column in model repository table.
+                summary_colstypes_dict: Override types for keys in the
+                    summary JSON column in model repository summary table.
+        """
+        # Get the necessary JSONs from model repository and summary tables.
+        model_repo_jsons, model_summary_json = self._get_model_tables_jsons()
+        # Find the types of various columns to create from each JSON blob.
+        # Override the types of automatically found column types if applicable.
+        summary_colstypes_dict = self._get_view_cols_types_for_json(
+            model_summary_json['summary'], summary_colstypes_dict)
+        model_metadata_colstypes_dict = self._get_view_cols_types_for_json(
+            model_repo_jsons['model_metadata'], model_metadata_types_dict)
+        metrics_colstypes_dict = self._get_view_cols_types_for_json(
+            model_repo_jsons['metrics'], metrics_colstypes_dict)
+
+        # Create view for the model table. Necessary data could be stored in
+        # multiple JSON columns such as model_metadata and metrics. We also
+        # need to include model_data column in the view, which is handled
+        # in _gen_create_view_sql.
+
+        repo_view_sql = self._gen_create_view_sql(
+            self.model_repo_table, self.repo_view_name,
+            model_metadata=model_metadata_colstypes_dict,
+            metrics=metrics_colstypes_dict)
+        plpy.execute(repo_view_sql)
+        # Create view for the summary table. All necessary data is stored
+        # in the summary JSON column of the repo_summary table.
+        summary_view_sql = self._gen_create_view_sql(
+            self.model_repo_summary_table, self.summary_view_name,
+            summary=summary_colstypes_dict)
+        plpy.execute(summary_view_sql)
+
+
+    def _gen_create_view_sql(self, table_name, view_name,
+                             **json_colstypes_dicts):
+        """
+            Generate SQL statements for creating columns and populating its
+            values from JSON blobs.
+            @params:
+                table_name: Name of the table containing the JSON blob
+                view_name: Output view to create
+                **json_colstypes_dicts: JSON blobs as python dicts.
+            @returns:
+                Part of the view creation SQL query. This part deals with
+                the various select clauses necessary in creating the view.
+        """
+        model_row = unique_string(desp='model_row')
+        select_clause = self._get_view_creation_header(
+            table_name, model_row, view_name)
+
+        # All the data necessary to create view is in various JSONs. Each key
+        # in a JSON will be converted to a column in the view, with the value
+        # equal to the corresponding value in the JSON object.
+        # First process all necessary JSON columns in the repo/repo_summary
+        # tables to create corresponding columns in views.
+        scalar_cols_select_list = []
+        array_colnames_clause_list = []
+        array_colnames_list = []
+        for column, json_colstypes_dict in json_colstypes_dicts.iteritems():
+            # column is the name of the JSON column in table_name
+            # json_colstypes_dict is the JSON blob in column as a python dict
+
+            # First get all the select clauses from scalar values in the JSON
+            scalar_cols_select_list += self._get_scalar_cols_select_sql_list(
+                column, json_colstypes_dict, model_row)
+            # Get all the select clauses from array values in the JSON.
+            colnames_select_sql, colnames = self._get_array_cols_select_sql_list(
+                column, json_colstypes_dict, model_row)
+            array_colnames_clause_list += colnames_select_sql
+            array_colnames_list += colnames
+
+        ## ----------------------------------------------------------------- ##
+        ## ----------------------------------------------------------------- ##
+        # Stitch various components together. Example query to create view
+        # from model_repo_table:
+        # drop view if exists latest_model;
+        # create view latest_model as
+        #     with latest as (select * from train_output order by model_id = 1)
+        #     select
+        #         (latest.model_metadata->>'pruning_cp')::int as pruning_cp,
+        #         (latest.model_metadata->>'tree_depth')::int as tree_depth
+        #         latest.model_type,
+        #         madlib.bytea_to_bytea8(latest.model_data)::madlib.bytea8 as model_data,
+        #         a1.cat_n_levels,
+        #         a2.cat_levels_in_text,
+        #         a3.impurity_var_importance,
+        #     from
+        #         (select array_agg(v) as cat_n_levels from
+        #             (select json_array_elements(
+        #                    metrics->'cat_n_levels')::text::int as v from latest
+        #             ) as aa1
+        #         ) as a1,
+        #         (select array_agg(v) as cat_levels_in_text from
+        #             (select ('[' || json_array_elements( model_metadata->'cat_levels_in_text') || ']'
+        #                     )::json->>0 as v from latest
+        #             ) as aa2
+        #         ) as a2,
+        #         (select array_agg(v) as impurity_var_importance from
+        #             (select json_array_elements(
+        #                   metrics->'impurity_var_importance')::text::double precision as v from latest
+        #             ) as aa3
+        #         ) as a3,
+        #         latest;
+
+        # View creation query from summary table is similar to the one with
+        # model table as above, it just involves expanding out the `summary`
+        # JSON column from the summary repo table into corresponding columns
+        # in views.
+        ## ----------------------------------------------------------------- ##
+        ## ----------------------------------------------------------------- ##
+
+        # Append select statements for all JSON keys associated with scalar values
+        select_clause += " SELECT "+', '.join(scalar_cols_select_list)
+
+        # If table_name is the repository table, then we must also create a
+        # column for the model_data column. This is not a part of any JSON blob
+        # in the repo table, so handle it separately. The model must be type
+        # casted to the correct model_data_type too.
+        if table_name == self.model_repo_table:
+            if self.model_data_type == 'bytea8':
+                model_data_str = "{schema_madlib}.bytea_to_bytea8(model_data)" \
+                    " as model_data"
+            elif self.model_data_type == 'double precision[]':
+                model_data_str = "{schema_madlib}._double_array_recv" \
+                    "(model_data, 'double precision'::regtype::int) as model_data"
+            else:
+                plpy.error("Invalid model_data_type {}".format(
+                    self.model_data_type))
+            select_clause += ', ' + model_data_str.format(
+                schema_madlib=self.schema_madlib)
+
+        # If any of the JSON keys had array values, the select statement is
+        # slightly more involved since we must use JSON functions to get the
+        # values and convert them to arrays that SQL understands.
+        if array_colnames_list:
+            select_clause += ', ' + ', '.join(array_colnames_list)
+            select_clause += ' FROM ' + ', '.join(array_colnames_clause_list)
+            select_clause += ', '
+        else:
+            select_clause += ' FROM '
+
+        select_clause += model_row
+        return select_clause
+
+    def _get_scalar_cols_select_sql_list(self, json_colname_in_tbl,
+                                         json_colstypes_dict, tbl_row):
+        """
+            Get list of select clauses for scalar values in a JSON blob.
+            @params:
+                json_colname_in_tbl: Name of the JSON column to process in
+                    input table.
+                json_colstypes_dict: Dict containing the type info for each
+                    key in the JSON blob. eg:
+                    {json_key: {json_value_type: is_json_value_array_flag}}
+                tbl_row: alias used in the query which has to be used in a
+                    SQL select clause to avoid ambiguity.
+            @returns: A list of all the select clauses which has to be stitched
+                together to form the final query.
+        """
+        ## ----------------------------------------------------------------- ##
+        ## ----------------------------------------------------------------- ##
+        # Example of what we want to return for a scalar col, where JSON blob
+        # is `model_metadata`, and the key which contains a scalar value in that
+        # blob is `pruning_cp`:
+        # select (latest.model_metadata->>'pruning_cp')::int as pruning_cp
+        ## ----------------------------------------------------------------- ##
+        ## ----------------------------------------------------------------- ##
+        select_scalars_list = ["({0}.{1}->>'{2}')::{3} AS {2}".format(
+            tbl_row, json_colname_in_tbl, colname, coltype_info['col_type'])
+                for colname, coltype_info in json_colstypes_dict.items()
+                if not coltype_info['is_list']]
+        return select_scalars_list
+
+    def _get_array_cols_select_sql_list(self, json_colname_in_tbl,
+                                        json_colstypes_dict, tbl_row):
+        """
+            Get lists of select clauses for scalar values in a JSON blob.
+            @params:
+                json_colname_in_tbl: Name of the JSON column to process in
+                    input table.
+                json_colstypes_dict: Dict containing the type info for each
+                    key in the JSON blob. eg:
+                    {json_key: {json_value_type: is_json_value_array_flag}}
+                tbl_row: alias used in the query which has to be used in a
+                    SQL select clause to avoid ambiguity.
+            @returns:
+                This function returns two lists, one containing all the
+                sub-queries for selecting arrays from JSON blobs, and another
+                list with just select statements referring to each inner
+                query's alias.
+        """
+        ## ----------------------------------------------------------------- ##
+        ## ----------------------------------------------------------------- ##
+        # Example of what we want to return for an INTEGER array from a JSON
+        # blob, where the json column is `metrics`, and the key in the JSON
+        # blob which contains an INTEGER array value is `cat_n_levels`:
+        # (select array_agg(v) as cat_n_levels from
+        #     (select json_array_elements( metrics->'cat_n_levels'
+        #                                )::text::int as v from latest
+        #     ) as aa1
+        # ) as a1,
+
+        # Example of what we want to return for a TEXT array from a json
+        # object, where the json column is `model_metadata`, and the key in
+        # the blob that contains a TEXT array value is `cat_levels_in_text`:
+        # (select array_agg(v) as cat_levels_in_text from
+        #     (select ('[' || json_array_elements( model_metadata->'cat_levels_in_text') || ']'
+        #             )::json->>0 as v from latest
+        #     ) as aa2
+        # ) as a2,
+        ## ----------------------------------------------------------------- ##
+        ## ----------------------------------------------------------------- ##
+
+        # Strip out the '[]' from coltype. '[]' should not be specified, since
+        # array_cols[i]['ctype'] is used to typecast the output of
+        # json_array_elements(), which is a scalar. These individual elements
+        # are passed to array_agg to create the actual array in the query.
+        array_cols = [
+            {'cname':colname, 'ctype':coltype_info['col_type'].strip()[:-2]}
+            for colname, coltype_info in json_colstypes_dict.items()
+            if coltype_info['is_list']
+        ]
+        subquery_names = [unique_string(desp='subq_{0}'.format(i))
+            for i in range(len(array_cols))]
+        select_colnames_list = ["{0}.{1}".format(
+                subquery_names[i], array_cols[i]['cname'])
+            for i in range(len(subquery_names))]
+        inner_query_name = unique_string(desp='inner')
+        json_temp_name = unique_string(desp='v')
+
+        def _get_sql(array_type):
+            if array_type == 'text':
+                # Note that {3} is not used in this string. While converting
+                # from a text array, we don't have to typecast to TEXT since
+                # it is already of type text.
+                select_clause = """(SELECT array_agg({0}) AS {1} FROM (
+                    SELECT ('[' || json_array_elements({2}->'{1}') || ']')::json->>0 AS {0}
+                    FROM {4}) AS {5}) AS {6}"""
+            else:
+                select_clause = """(SELECT array_agg({0}) AS {1} FROM (
+                    SELECT json_array_elements({2}->'{1}')::TEXT::{3} AS {0}
+                    FROM {4}) AS {5}) AS {6}"""
+            return select_clause
+
+        select_colnames_clause_list = [_get_sql(array_cols[i]['ctype']).format(
+                json_temp_name, # {0} alias used in query
+                array_cols[i]['cname'], # {1} name of column to include in view
+                json_colname_in_tbl,# {2} name of the json column in input tbl
+                array_cols[i]['ctype'], # {3} type of column included in view
+                tbl_row, # {4} alias used for row corresponding to model_id in input tbl
+                inner_query_name, # {5} alias for inner query
+                subquery_names[i]) # {6} alias for outer sub query
+            for i in range(len(array_cols))]
+
+        return select_colnames_clause_list, select_colnames_list
+
+
+    def _get_view_cols_types_for_json(self,
+                                      json_from_table,
+                                      type_overriding_dict):
+        """
+            Get the column names, and their types to be created in the
+            view. These column names and types are obtained from JSON blobs
+            in the model repo/summary tables.
+            @params:
+                json_from_table: JSON blob in the repo/summary table as a
+                    python dict.
+                type_overriding_dict: Types are automatically figures out
+                    in this function. This dict provides the overriding
+                    types for column names if need be.
+            @returns:
+                A dictionary, with the column name being the key, and a dict
+                for value containing.
+                Example:
+                    {colname: {coltype: is_coltype_a_list}}
+                colname: is the name of the column in view, which is the key
+                    in json
+                cotype: is the type of the column
+                is_coltype_a_list: is a boolean flag indicating if the type is
+                    an array or not.
+        """
+        # Map types in python to types in SQL. Couple points to note:
+        # 1. strings in JSON when read out in python is of type unicode.
+        # 2. types.NoneType is to capture NULL in SQL. We will thus end up
+        #    casting any column with NULL value to type text.
+        python_to_sql_type_map = {
+            float:'double precision',
+            int:'int',
+            unicode:'text',
+            types.NoneType:'text',
+            bool:'boolean',
+        }
+
+        def get_type(col_name, col_value):
+            """
+                Given JSON key-value pair, return back the column to create
+                in the view, along with its type. key represents the column
+                name, and the type of value in python is mapped to a sql type.
+            """
+            value_type = type(col_value)
+            type_suffix = ''
+            is_list = False
+            if type(col_value) == list:
+                # If col_value is a list, set value_type to the type of the first
+                # element in the list. All elements in this list should be of
+                # the same type.
+                value_type = types.NoneType if not col_value else type(col_value[0])
+                type_suffix = '[]'
+                is_list = True
+            # If the calling function has passed a dict to override the types
+            # of specific columns, use the overriding types.
+            if type_overriding_dict and col_name in type_overriding_dict:
+                return {'col_type': type_overriding_dict[col_name],
+                        'is_list': is_list}
+            else:
+                if value_type in python_to_sql_type_map:
+                    return {'col_type': python_to_sql_type_map[value_type]+type_suffix,
+                            'is_list': is_list}
+                else:
+                    plpy.error("Unknown type for json key-value ({0}:{1})".
+                        format(col_name, value_type))
+
+        view_cols_types = {col_name:get_type(col_name, col_value)
+            for col_name, col_value in json.loads(json_from_table).items()}
+        return view_cols_types
+
+    def _get_model_tables_jsons(self):
+        """
+            Return back the JSON columns required to create views from both
+            model_repo table and model_repo_summary.
+        """
+        model_repo_jsons = plpy.execute("""
+                SELECT model_metadata, metrics
+                FROM {0}
+                WHERE model_id={1}
+            """.format(self.model_repo_table, self.model_id))
+        if not model_repo_jsons:
+            plpy.error("Invalid model id ({0}) provided.".format(self.model_id))
+
+        model_summary_json = plpy.execute("""
+                SELECT summary
+                FROM {0}
+                WHERE model_id={1}
+            """.format(self.model_repo_summary_table, self.model_id))
+        if not model_summary_json:
+            plpy.error("Missing summary table for model_id {0}!".format(self.model_id))
+
+        return model_repo_jsons[0], model_summary_json[0]
+
+
+class VersionedModelTableValidator(object):
     def __init__(self, model_table):
         self.model_table = model_table
         self.model_table_summary = add_postfix(self.model_table, '_summary')
-        self.create_model_tables=False
+        self.create_model_tables = False
 
     def _is_valid_versioned_table(self, cols, expected_cols):
         return len(cols)==len(expected_cols) and \
@@ -76,8 +487,8 @@ class VersionedModelTableValidator():
 
         @params:
             model_table: Name of the output model table
-            create_tables_if_not_exist: If model_table and model_table_summary don't
-                exist, create them if this flag is set to True.
+            create_tables_if_not_exist: If model_table and model_table_summary
+                don't exist, create them if this flag is set to True.
         """
         model_table_exists = table_exists(self.model_table)
         model_table_summary_exists = table_exists(self.model_table_summary)
@@ -85,13 +496,15 @@ class VersionedModelTableValidator():
             # check if the two tables have specific columns
             # First check for model_table cols and types.
             model_table_cols = get_cols(self.model_table)
-            _assert(self._is_valid_versioned_table(model_table_cols, MODEL_TABLE_COLS),
-                "Unexpected columns found in model table {0}.".format(self.model_table))
+            _assert(self._is_valid_versioned_table(
+                model_table_cols, MODEL_TABLE_COLS),
+                "Unexpected columns found in model table {0}: {1}.".format(
+                    self.model_table, model_table_cols))
 
             # Now check for self.model_table_summary cols and types.
             model_table_summary_cols = get_cols(self.model_table_summary)
-            _assert(self._is_valid_versioned_table(model_table_summary_cols,
-                        MODEL_TABLE_SUMMARY_COLS),
+            _assert(self._is_valid_versioned_table(
+                model_table_summary_cols, MODEL_TABLE_SUMMARY_COLS),
                 "Unexpected columns found in model summary table {0}.".format(
                     self.model_table_summary))
         elif model_table_exists or model_table_summary_exists:
@@ -103,12 +516,12 @@ class VersionedModelTableValidator():
 
 class VersionedModelWriter(object):
     def __init__(self, schema_madlib, model_table, model_type, model_data_type,
-                 model_name='', description=''):
+                 name='', description=''):
         self.schema_madlib = schema_madlib
         self.model_table = model_table
         self.model_table_summary = add_postfix(model_table, '_summary')
         self.model_type = model_type
-        self.model_name = model_name
+        self.name = name
         self.description = description
         self.model_data_type = model_data_type
         self.start_training_time = None
@@ -119,10 +532,10 @@ class VersionedModelWriter(object):
             self._create_model_tables()
 
     def record_training_start_time():
-        self.start_training_time = time.time()
+        self.start_training_time = datetime.datetime.now()
 
     def record_training_end_time():
-        self.end_training_time = time.time()
+        self.end_training_time = datetime.datetime.now()
 
     def _create_model_tables(self):
         if is_platform_pg():
@@ -147,11 +560,19 @@ class VersionedModelWriter(object):
            """.format(model_table_summary=self.model_table_summary, **locals())
         plpy.execute(create_model_summary_sql)
 
-    def store_model(self, model_data, model_metadata, metrics,
-                    start_time, end_time, model_summary):
+    def store_model(self, model_data, model_metadata, metrics, model_summary,
+                    start_time=None, end_time=None):
         # TODO should we validate if model_data's type == self.model_data_type
-        model_id = self._store_model_table_summary(start_time, end_time, model_summary)
+        model_id = self._store_model_table_summary(
+            start_time, end_time, model_summary)
         self._store_model_table(model_id, model_data, model_metadata, metrics)
+
+        view_creator = VersionedModelViewCreator(self.schema_madlib,
+                                                 self.model_table,
+                                                 model_id,
+                                                 'model_view',
+                                                 self.model_data_type)
+        view_creator.create_view()
 
     # TODO think about adding start_time to __init__ or provide a way for users to call a function
     # TODO add quote ident
@@ -163,12 +584,12 @@ class VersionedModelWriter(object):
 
         start_time = start_time if start_time else 'NULL'
         end_time = end_time if end_time else 'NULL'
+        summary_table_cols = ', '.join(['{0}'.format(colname)
+            for colname in MODEL_TABLE_SUMMARY_COLS if colname != 'model_id'])
         sql = """
-            INSERT INTO {self.model_table_summary}
-            (model_type, summary, start_training_time, end_training_time, model_name, description,
-            madlib_version, __madlib_internal_id__)
+            INSERT INTO {self.model_table_summary} ({summary_table_cols})
             VALUES ('{self.model_type}', '{model_summary}', {start_time},
-                    {end_time}, '{self.model_name}', '{self.description}',
+                    {end_time}, '{self.name}', '{self.description}',
                     '{version}', '{madlib_internal_id}')
         """.format(**locals())
         plpy.execute(sql)
@@ -188,15 +609,17 @@ class VersionedModelWriter(object):
                 and type(model_data) == list:
             model_data_query = 'array_send(ARRAY{0})'.format(model_data) #TODO may have performance problems. compare with writing this to a table
         elif is_valid_psql_type(self.model_data_type, BYTEA8):
-            model_data_query = "{self.schema_madlib}.bytea8send($madlib${model_data}$madlib$)".format(**locals())
+            model_data_query = "{self.schema_madlib}.bytea8send($madlib${model_data}$madlib$)".\
+                format(**locals())
         else:
-            plpy.error('Cannot write model to model table. Unsupported '
-                       'model data type {0}'.format(self.model_data_type)) #TODO improve this error messsage
-        sql = """
-            INSERT INTO {self.model_table}
-            (model_id, grouping, model_type, model_data, model_metadata, metrics)
-            VALUES ('{model_id}', NULL, '{self.model_type}', {model_data_query},
-                    '{model_metadata}', '{metrics}')
+            plpy.error('Cannot write model to {0}. Unsupported model data type {1}'.\
+                format(self.model_table, self.model_data_type))
+
+        model_table_cols = ', '.join(['{0}'.format(colname)
+                    for colname in MODEL_TABLE_COLS])
+        sql = """INSERT INTO {self.model_table} ({model_table_cols})
+                 VALUES ('{model_id}', NULL, '{self.model_type}', {model_data_query},
+                         '{model_metadata}', '{metrics}')
         """.format(**locals())
         plpy.execute(sql)
 
@@ -209,10 +632,11 @@ class VersionedModelWriter(object):
 
 
 class VersionedModelReader():
-    def __init__(self, schema_madlib, model_table, model_data_type, model_id=None):
+    def __init__(self, schema_madlib, model_repo_table,
+                 model_data_type, model_id=None):
         self.schema_madlib = schema_madlib
-        self.model_table = model_table
-        self.model_table_summary = add_postfix(model_table, '_summary')
+        self.model_repo_table = model_repo_table
+        self.model_summary_table = add_postfix(model_table, '_summary')
         self.model_data_type = model_data_type
         validator = VersionedModelTableValidator(self.model_table)
         validator.validate_model_tables()
@@ -232,11 +656,14 @@ class VersionedModelReader():
 
     def _run_select_query(self, table):
         if is_valid_psql_type(self.model_data_type, ONLY_ARRAY):
-            model_data_query = '{schema_madlib}._double_array_recv(model_data)'.format(self.schema_madlib)
+            model_data_query = '{schema_madlib}._double_array_recv(model_data)'.\
+                format(self.schema_madlib)
         elif is_valid_psql_type(self.model_data_type, BYTEA8):
-            model_data_query = "{schema_madlib}.bytea_to_bytea8(model_data)".format(self.schema_madlib)
+            model_data_query = "{schema_madlib}.bytea_to_bytea8(model_data)".\
+                format(self.schema_madlib)
         else:
-            plpy.error('Cannot read model from model table. Unsupported model data type {0}'.format(self.model_data_type)) #TODO improve this error messsage
+            plpy.error("Cannot read model from model table. Unsupported "
+                "model data type {}".format(self.model_data_type))
 
         res = plpy.execute("""
                     SELECT model_id, metrics, model_metadata, model_type, {model_data_query}
