@@ -9,6 +9,7 @@
 
 from __future__ import division
 import plpy
+import time
 from math import sqrt
 from operator import itemgetter
 from itertools import groupby
@@ -2580,13 +2581,68 @@ def boosted_tree_train(schema_madlib, training_table_name, output_table_name,
     # n_bins = 20
     # grouping_cols = ''
     # weights = '1'
-
+    t0 = time.time()
     plpy.execute(""" DROP TABLE IF EXISTS temp_boosted """.format(**locals()))
-    plpy.execute(""" CREATE TABLE temp_boosted AS SELECT {id_col_name}, {dependent_variable}, {list_of_features} FROM boston """.format(**locals()))
+    plpy.execute(""" CREATE TABLE temp_boosted AS SELECT {id_col_name}, {dependent_variable}, {list_of_features}, 0.0::double precision as predf FROM {training_table_name} """.format(**locals()))
+    t1 = time.time()
+    plpy.info("Time to create initial table : {0}".format(t1-t0))
 
-    for i in range(3):
+    # INITIAL RUN
+    plpy.execute(""" DROP TABLE IF EXISTS {output_table_name}, {output_table_name}_summary, prediction_results""".format(**locals()))
+
+    t0 = time.time()
+    plpy.execute(""" SELECT {schema_madlib}.tree_train(
+            '{training_table_name}',
+            '{output_table_name}',
+            '{id_col_name}',
+            '{dependent_variable}',
+            '{list_of_features}', NULL, NULL, NULL, NULL, 1
+        )""".format(**locals()))
+    t1 = time.time()
+    plpy.info("Time to train : {0}".format(t1-t0))
+
+    # plpy.info(plpy.execute(""" SELECT pruning_cp, cat_levels_in_text, cat_n_levels, impurity_var_importance, tree_depth FROM {output_table_name}; """.format(**locals())))
+
+    # plpy.info(plpy.execute(""" SELECT madlib.tree_display('{output_table_name}', FALSE);""".format(**locals())))
+    # plpy.info(plpy.execute(""" SELECT * FROM {output_table_name}_summary """.format(**locals())))
+    # plpy.info("")
+
+    t0 = time.time()
+    plpy.execute(""" SELECT {schema_madlib}.tree_predict(
+            '{output_table_name}',
+            '{training_table_name}',
+            'prediction_results',
+            'response');
+        """.format(**locals()))
+    t1 = time.time()
+    plpy.info("Time to predict : {0}".format(t1-t0))
+    # plpy.info(plpy.execute(""" SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable}
+        #              FROM prediction_results p, {training_table_name} s
+        #              WHERE s.{id_col_name} = p.{id_col_name} ORDER BY {id_col_name} LIMIT 2;
+        # """.format(**locals())))
+
+
+    t0 = time.time()
+    plpy.execute(""" UPDATE temp_boosted SET {dependent_variable} = res, predf = predf + estimated_{dependent_variable}
+                     FROM  (
+                        SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable},
+                               {dependent_variable} - estimated_{dependent_variable} AS res
+                        FROM prediction_results p, {training_table_name} s
+                        WHERE s.{id_col_name} = p.{id_col_name}
+                        ) q
+                     WHERE q.{id_col_name} = temp_boosted.{id_col_name}
+        """.format(**locals()))
+    t1 = time.time()
+    plpy.info("Time to update : {0}".format(t1-t0))
+
+    # plpy.info(plpy.execute(""" SELECT * FROM temp_boosted ORDER BY {id_col_name} LIMIT 2""".format(**locals())))
+    # plpy.info("")
+    # plpy.info("")
+
+    for i in range(40):
         plpy.execute(""" DROP TABLE IF EXISTS {output_table_name}, {output_table_name}_summary, prediction_results""".format(**locals()))
 
+        t0 = time.time()
         plpy.execute(""" SELECT {schema_madlib}.tree_train(
                 'temp_boosted',
                 '{output_table_name}',
@@ -2594,23 +2650,34 @@ def boosted_tree_train(schema_madlib, training_table_name, output_table_name,
                 '{dependent_variable}',
                 '{list_of_features}', NULL, NULL, NULL, NULL, 1
             )""".format(**locals()))
-        plpy.info(plpy.execute(""" SELECT pruning_cp, cat_levels_in_text, cat_n_levels, impurity_var_importance, tree_depth FROM {output_table_name}; """.format(**locals())))
-        plpy.info(plpy.execute(""" SELECT * FROM {output_table_name}_summary """.format(**locals())))
-        plpy.info("")
+        t1 = time.time()
+        plpy.info("Time to train : {0}".format(t1-t0))
+        # plpy.info(plpy.execute(""" SELECT pruning_cp, cat_levels_in_text, cat_n_levels, impurity_var_importance, tree_depth FROM {output_table_name}; """.format(**locals())))
 
+        # plpy.info(plpy.execute(""" SELECT madlib.tree_display('{output_table_name}', FALSE);""".format(**locals())))
+        # plpy.info("")
+
+        # plpy.execute(""" UPDATE {output_table_name}_summary SET dependent_varname = 'mpg';""".format(**locals()))
+
+        t0 = time.time()
         plpy.execute(""" SELECT {schema_madlib}.tree_predict(
                 '{output_table_name}',
                 '{training_table_name}',
                 'prediction_results',
                 'response');
             """.format(**locals()))
-        plpy.info(plpy.execute(""" SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable}
-                         FROM prediction_results p, {training_table_name} s
-                         WHERE s.{id_col_name} = p.{id_col_name} ORDER BY {id_col_name} LIMIT 2;
-            """.format(**locals())))
+        t1 = time.time()
+        plpy.info("Time to predict : {0}".format(t1-t0))
+        # plpy.info(plpy.execute(""" SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable}
+            #              FROM prediction_results p, {training_table_name} s
+            #              WHERE s.{id_col_name} = p.{id_col_name} ORDER BY {id_col_name} LIMIT 2;
+            # """.format(**locals())))
 
 
-        plpy.execute(""" UPDATE temp_boosted SET {dependent_variable} = res
+        t0 = time.time()
+        plpy.execute(""" UPDATE temp_boosted
+                         SET {dependent_variable} = res - predf,
+                             predf = predf + estimated_{dependent_variable}
                          FROM  (
                             SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable},
                                    {dependent_variable} - estimated_{dependent_variable} AS res
@@ -2619,6 +2686,8 @@ def boosted_tree_train(schema_madlib, training_table_name, output_table_name,
                             ) q
                          WHERE q.{id_col_name} = temp_boosted.{id_col_name}
             """.format(**locals()))
+        t1 = time.time()
+        plpy.info("Time to update : {0}".format(t1-t0))
 
-        plpy.info(plpy.execute(""" SELECT * FROM temp_boosted ORDER BY {id_col_name} LIMIT 2""".format(**locals())))
+        plpy.info(plpy.execute(""" SELECT sum({dependent_variable}*{dependent_variable}) FROM temp_boosted """.format(**locals())))
 
