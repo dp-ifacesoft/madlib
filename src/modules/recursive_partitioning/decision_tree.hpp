@@ -27,3 +27,7 @@ DECLARE_UDF(recursive_partitioning, get_split_thresholds)
 DECLARE_UDF(recursive_partitioning, prune_and_cplist)
 
 DECLARE_UDF(recursive_partitioning, convert_to_random_forest_format)
+
+DECLARE_UDF(recursive_partitioning, bdt_transition)
+DECLARE_UDF(recursive_partitioning, bdt_merge)
+DECLARE_UDF(recursive_partitioning, bdt_final)

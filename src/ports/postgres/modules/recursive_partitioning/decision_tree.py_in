@@ -2673,6 +2673,14 @@ def boosted_tree_train(schema_madlib, training_table_name, output_table_name,
             #              WHERE s.{id_col_name} = p.{id_col_name} ORDER BY {id_col_name} LIMIT 2;
             # """.format(**locals())))
 
+        t0 = time.time()
+        plpy.execute(""" SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable},
+                               {dependent_variable} - estimated_{dependent_variable} AS res
+                        FROM prediction_results p INNER JOIN {training_table_name} s
+                            ON (s.{id_col_name} = p.{id_col_name})
+            """.format(**locals()))
+        t1 = time.time()
+        plpy.info("Time to inner join : {0}".format(t1-t0))
 
         t0 = time.time()
         plpy.execute(""" UPDATE temp_boosted
@@ -2681,13 +2689,13 @@ def boosted_tree_train(schema_madlib, training_table_name, output_table_name,
                          FROM  (
                             SELECT s.{id_col_name}, {dependent_variable}, estimated_{dependent_variable},
                                    {dependent_variable} - estimated_{dependent_variable} AS res
-                            FROM prediction_results p, {training_table_name} s
-                            WHERE s.{id_col_name} = p.{id_col_name}
+                            FROM prediction_results p INNER JOIN {training_table_name} s
+                                ON (s.{id_col_name} = p.{id_col_name})
                             ) q
                          WHERE q.{id_col_name} = temp_boosted.{id_col_name}
             """.format(**locals()))
         t1 = time.time()
         plpy.info("Time to update : {0}".format(t1-t0))
 
-        plpy.info(plpy.execute(""" SELECT sum({dependent_variable}*{dependent_variable}) FROM temp_boosted """.format(**locals())))
+        # plpy.info(plpy.execute(""" SELECT sum({dependent_variable}*{dependent_variable}) FROM temp_boosted """.format(**locals())))
 
