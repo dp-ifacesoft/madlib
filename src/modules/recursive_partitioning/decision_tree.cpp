@@ -993,7 +993,7 @@ class BDTTransitionState {
         BDTTransitionState(const AnyType &inArray)
             : mStorage(inArray.getAs<Handle>()) {
 
-            rebind(static_cast<uint16_t>(mStorage[1]));
+            rebind(static_cast<uint16_t>(mStorage[0]));
         }
 
     /**
@@ -1006,13 +1006,13 @@ class BDTTransitionState {
             return mStorage;
         }
 
-        inline void initialize(const Allocator &inAllocator, uint16_t inWidthOfX) {
+        inline void initialize(const Allocator &inAllocator, uint16_t inWidthOfFeat) {
             mStorage = inAllocator.allocateArray<double, dbal::AggregateContext,
-                                                 dbal::DoZero, dbal::ThrowBadAlloc>(arraySize(inWidthOfX));
-            rebind(inWidthOfX);
-            widthOfX = inWidthOfX;
+                                                 dbal::DoZero, dbal::ThrowBadAlloc>(arraySize(inWidthOfFeat));
+            rebind(inWidthOfFeat);
+            widthOfFeat = inWidthOfFeat;
 
-            for (int i = 0 ; i < widthOfX ; i ++){
+            for (int i = 0 ; i < widthOfFeat ; i ++){
                 left_values[i] = 0;
                 right_values[i] = 0;
                 left_count[i] = 0;
@@ -1030,75 +1030,88 @@ class BDTTransitionState {
         }
 
     private:
-        static inline size_t arraySize(const uint16_t inWidthOfX) {
-            return 7 + 6 * inWidthOfX;
+        static inline size_t arraySize(const uint16_t inWidthOfFeat) {
+            return 2 + 6 * inWidthOfFeat;
         }
-        void rebind(uint16_t inWidthOfX) {
+        void rebind(uint16_t inWidthOfFeat) {
 
-            widthOfX.rebind(&mStorage[0]);
+            widthOfFeat.rebind(&mStorage[0]);
             numRows.rebind(&mStorage[1]);
-            features.rebind(&mStorage[2], inWidthOfX);
-            feature_values.rebind(&mStorage[3] + inWidthOfX, inWidthOfX);
-            left_values.rebind(&mStorage[4] + 2 * inWidthOfX, inWidthOfX);
-            right_values.rebind(&mStorage[5] + 3 * inWidthOfX, inWidthOfX);
-            left_count.rebind(&mStorage[6] + 4 * inWidthOfX, inWidthOfX);
-            right_count.rebind(&mStorage[7] + 5 * inWidthOfX, inWidthOfX);
+            features.rebind(&mStorage[2], inWidthOfFeat);
+            feature_values.rebind(&mStorage[3] + inWidthOfFeat, inWidthOfFeat);
+            left_values.rebind(&mStorage[4] + 2 * inWidthOfFeat, inWidthOfFeat);
+            right_values.rebind(&mStorage[5] + 3 * inWidthOfFeat, inWidthOfFeat);
+            left_count.rebind(&mStorage[6] + 4 * inWidthOfFeat, inWidthOfFeat);
+            right_count.rebind(&mStorage[7] + 5 * inWidthOfFeat, inWidthOfFeat);
 
         }
 
         Handle mStorage;
 
     public:
-        typename HandleTraits<Handle>::ReferenceToUInt16 widthOfX;
+        typename HandleTraits<Handle>::ReferenceToUInt16 widthOfFeat;
+        typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap features;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap feature_values;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap left_values;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap right_values;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap left_count;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap right_count;
-        typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
 };
 
 AnyType
-bdt_transition::run(AnyType & args){
+bdt_transition::run(AnyType &args){
+
     BDTTransitionState<MutableArrayHandle<double> > state = args[0];
     if (args[1].isNull() || args[2].isNull()) { return args[0]; }
     double y = args[1].getAs<double>();
 
     MappedColumnVector x;
+    MappedIntegerVector features;
+    MappedColumnVector feature_values;
     try {
         // an exception is raised in the backend if args[2] contains nulls
         MappedColumnVector xx = args[2].getAs<MappedColumnVector>();
         // x is a const reference, we can only rebind to change its pointer
         x.rebind(xx.memoryHandle(), xx.size());
+
+        MappedIntegerVector infeatures = args[3].getAs<MappedIntegerVector>();
+        // x is a const reference, we can only rebind to change its pointer
+        features.rebind(infeatures.memoryHandle(), infeatures.size());
+
+        MappedColumnVector infeature_values = args[4].getAs<MappedColumnVector>();
+        // x is a const reference, we can only rebind to change its pointer
+        feature_values.rebind(infeature_values.memoryHandle(), infeature_values.size());
+
     } catch (const ArrayWithNullException &e) {
         return args[0];
     }
 
     if (state.numRows == 0) {
 
-        state.initialize(*this, static_cast<uint16_t>(x.size()));
-        if (!args[3].isNull()) {
-            BDTTransitionState<ArrayHandle<double> > previousState = args[3];
+        state.initialize(*this, static_cast<uint16_t>(features.size()));
 
-            state = previousState;
-            // state.reset();
-        }
+        // if (!args[5].isNull()) {
+        //     warning("args 5 not null");
+        //     BDTTransitionState<ArrayHandle<double> > previousState = args[5];
+
+        //     state = previousState;
+        //     // state.reset();
+        // }
     }
 
     state.numRows++;
+    for (int i = 0 ; i < features.size() ; i++){
 
-    for (int i = 0 ; i < x.size() ; i++){
+        int feature_index = features[i];
+        if ( x[feature_index] <= feature_values[i] ){
 
-        int feature_index = state.features[i];
-        if ( x[feature_index] <= state.feature_values[i]){
-
-            state.left_values[i] = state.left_values[i] + y;
-            state.left_count[i] ++;
+            state.left_values(i) += y;
+            state.left_count(i) ++;
 
         } else {
-            state.right_values[i] = state.right_values[i] + y;
-            state.right_count[i] ++;
+            state.right_values(i) += y;
+            state.right_count(i) ++;
         }
     }
 
@@ -1106,7 +1119,7 @@ bdt_transition::run(AnyType & args){
 }
 
 AnyType
-bdt_merge::run(AnyType & args){
+bdt_merge::run(AnyType &args){
     BDTTransitionState<MutableArrayHandle<double> > stateLeft = args[0];
     BDTTransitionState<ArrayHandle<double> > stateRight = args[1];
     if (stateLeft.numRows == 0)
@@ -1114,11 +1127,15 @@ bdt_merge::run(AnyType & args){
     else if (stateRight.numRows == 0)
         return stateLeft;
 
-    for (int i = 0 ; i < stateLeft.widthOfX ; i++){
+    for (int i = 0 ; i < stateLeft.widthOfFeat ; i++){
 
         stateLeft.left_values[i] += stateRight.left_values[i];
+        stateLeft.left_count[i] += stateRight.left_count[i];
         stateLeft.right_values[i] += stateRight.right_values[i];
+        stateLeft.right_count[i] += stateRight.right_count[i];
     }
+
+    return stateLeft;
 }
 
 AnyType
@@ -1126,10 +1143,14 @@ bdt_final::run(AnyType &args) {
 
     BDTTransitionState<MutableArrayHandle<double> > state = args[0];
 
-    for (int i = 0 ; i < state.widthOfX ; i ++){
+    for (int i = 0 ; i < state.left_values.size() ; i ++){
 
-        state.left_values[i] = state.left_values[i] / state.left_count[i];
-        state.right_values[i] = state.right_values[i] / state.right_count[i];
+        if (state.left_count[i] != 0){
+            state.left_values[i] = state.left_values[i] / state.left_count[i];
+        }
+        if (state.right_count[i] != 0){
+            state.right_values[i] = state.right_values[i] / state.right_count[i];
+        }
 
     }
 

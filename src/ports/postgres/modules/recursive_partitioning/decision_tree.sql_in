@@ -2531,8 +2531,10 @@ m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__bdt_transition(
     DOUBLE PRECISION[],
-    DOUBLE PRECISION,                /*+ y */
+    DOUBLE PRECISION,       /*+ y */
     DOUBLE PRECISION[],     /*+ x */
+    INTEGER[],              /*+ features */
+    DOUBLE PRECISION[],     /*+ feature_values */
     DOUBLE PRECISION[])     /*+ previous state */
 RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'bdt_transition'
@@ -2559,11 +2561,13 @@ DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.__bdt_step(
 CREATE AGGREGATE MADLIB_SCHEMA.__bdt_step(
     /*+ y */ DOUBLE PRECISION,
     /*+ x */ DOUBLE PRECISION[],
+    /*+ features */ INTEGER[],
+    /*+ feature_values */ DOUBLE PRECISION[],
     /*+ previous_state */ DOUBLE PRECISION[]) (
 
     STYPE=DOUBLE PRECISION[],
     SFUNC=MADLIB_SCHEMA.__bdt_transition,
     m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.__bdt_merge,')
     FINALFUNC=MADLIB_SCHEMA.__bdt_final,
-    INITCOND='{0,0,0,0,0,0}'
+    INITCOND='{0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0}'
 );
