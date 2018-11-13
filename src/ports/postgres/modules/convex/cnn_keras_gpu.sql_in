@@ -28,13 +28,11 @@ RETURNS VOID AS $$
     if use_cpu_only:
         import os
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
-        device_flag = '/cpu:0'
     else:
         import tensorflow as tf
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
-        device_flag = '/gpu:0'
 
     def create_model_architecture(n_classes):
         model = Sequential()
@@ -197,13 +195,11 @@ use_cpu_only=False
 if use_cpu_only:
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
-    device_flag = '/cpu:0'
 else:
     import tensorflow as tf
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
-    device_flag = '/gpu:0'
 
 if not state:
     # model needs to be initialized
