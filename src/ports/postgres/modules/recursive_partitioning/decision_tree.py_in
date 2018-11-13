@@ -426,7 +426,8 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
                list_of_features_to_exclude, split_criterion,
                grouping_cols, weights, max_depth,
                min_split, min_bucket, n_bins, pruning_params,
-               null_handling_params, verbose_mode, **kwargs):
+               null_handling_params, verbose_mode, model_repository_table,
+               name, description, **kwargs):
     """ Decision tree main training function
 
     Args:
@@ -579,13 +580,6 @@ def _create_nonversioned_output_tables(schema_madlib, training_table_name, outpu
                                 bins['cat_origin'], bins['cat_n'], bins['cat_features'],
                                 bins['con_features'], output_table_name,
                                 use_existing_tables, running_cv, n_folds)
-
-
-
-
-
-
-
 
 # -------------------------------------------------------------------------
 
@@ -868,31 +862,6 @@ def _get_summary_dict(fields, **kwargs):
     # TODO: check with rest of AA, if we want to change this
     return { x : kwargs[x] for x in fields }
 
-    # commented lines are redundant with other columns
-    # (TODO: remove commented lines)
-        ## model_summary['method'] = 'tree_train'
-        #model_summary['is_classification'] = is_classification
-        #model_summary['source_table'] = source_table
-        ## model_summary['model_table'] = model_table
-        #model_summary['id_col_name'] = id_col_name
-        #model_summary['list_of_features'] = list_of_features
-        # model_summary['list_of_features_to_exclude'] = list_of_features_to_exclude
-        # model_summary['dependent_varname'] = dependent_varname
-        # model_summary['independent_varnames'] = cat_features + con_features
-        # model_summary['cat_features'] = cat_features
-        # model_summary['con_features'] = con_features
-        # model_summary['grouping_cols'] = grouping_cols
-        # model_summary['num_groups'] = num_all_groups
-        # model_summary['num_failed_groups'] = num_failed_groups
-        # model_summary['total_rows_processed'] = total_rows_processed
-        # model_summary['total_rows_skipped'] = total_rows_skipped
-        # model_summary['dependent_var_levels'] = dep_list
-        # model_summary['dependent_var_type'] = dependent_var_type
-        # model_summary['independent_var_types'] = independent_var_types
-        # model_summary['input_cp'] = input_cp
-        # model_summary['n_folds'] = n_folds
-        # model_summary['null_proxy'] = null_proxy
-
 def _create_versioned_output_tables(schema_madlib, training_table_name,
                                     output_table_name, tree_states, bins,
                                     split_criterion, id_col_name,
@@ -904,7 +873,8 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
                                     grouping_cols=None,
                                     use_existing_tables=False,
                                     running_cv=False,
-                                    n_folds=0, null_proxy=None, **kwargs):
+                                    n_folds=0, null_proxy=None,
+                                    name='', description='', **kwargs):
 
     """ Create versioned repo and summary table with results
 
@@ -977,7 +947,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
 
     model_writer = VersionedModelWriter(schema_madlib, output_table_name,
                                         'Decision Tree', 'bytea8',
-                                        name='something', description='sdf')
+                                        name=name, description=description)
     model_writer.store_model(model_data, model_metadata, metrics, model_summary)
 
 # ------------------------------------------------------------
