@@ -132,8 +132,10 @@ def _get_table_schema_names(tbl, only_first_schema=False):
     return (schema_str.strip(), table.strip())
 # -------------------------------------------------------------------------
 
-
-def table_exists(tbl, only_first_schema=False):
+TABLES_ONLY = "'r', 't', 'f'"
+VIEWS_ONLY = "'v', 'm'"
+TABLES_AND_VIEWS = "'r', 'v', 'm', 't', 'f'"
+def table_exists(tbl, only_first_schema=False, relkind=TABLES_AND_VIEWS):
     """
     Returns True if the table exists in the database.
 
@@ -143,6 +145,10 @@ def table_exists(tbl, only_first_schema=False):
     Args:
         @param tbl Name of the table. Can be schema qualified. If it is not
                     qualified then the current schema is used.
+        @param only_first_schema: boolean, search only in current_schema() if
+                    set to True, else search all schemas in search_path.
+        @param relkind Flags to determine the kinds of relations to check for.
+                       Default is to search for both tables and views.
     """
     schema_str, table = _get_table_schema_names(tbl, only_first_schema)
     if schema_str and table:
@@ -156,13 +162,13 @@ def table_exists(tbl, only_first_schema=False):
                 WHERE relnamespace = pg_namespace.oid
                   AND nspname {schema_expr}
                   AND (relname = '{table}')
+                  AND relkind IN ({relkind})
             ) AS table_exists
             """.format(**locals()))[0]['table_exists']
         return bool(does_table_exist)
     else:
         return False
 # -------------------------------------------------------------------------
-
 
 def rename_table(schema_madlib, orig_name, new_name):
     """

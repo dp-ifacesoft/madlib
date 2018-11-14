@@ -1620,6 +1620,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                                     $11, $12, $13, $14, $15, $16, $17, $18,
                                     ''::TEXT);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     training_table_name         TEXT,
@@ -1644,6 +1646,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                                     $11, $12, $13, $14, $15, $16, $17,
                                     ''::TEXT, ''::TEXT);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     training_table_name         TEXT,
@@ -1667,6 +1671,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                                     $11, $12, $13, $14, $15, $16,
                                     NULL::TEXT, ''::TEXT, ''::TEXT);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     training_table_name         TEXT,
@@ -2243,7 +2249,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_predict(
     output               TEXT,
     pred_type            TEXT
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_predict($1, $2, $3, $4, NULL:INTEGER);
+    SELECT MADLIB_SCHEMA.tree_predict($1, $2, $3, $4, NULL::INTEGER);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `CONTAINS SQL', `');
 
@@ -2252,7 +2258,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_predict(
     source               TEXT,
     output               TEXT
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_predict($1, $2, $3, 'response', NULL:INTEGER);
+    SELECT MADLIB_SCHEMA.tree_predict($1, $2, $3, 'response', NULL::INTEGER);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `CONTAINS SQL', `');
 

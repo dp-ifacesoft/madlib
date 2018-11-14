@@ -15,6 +15,8 @@ from itertools import groupby
 from collections import Iterable
 
 from internal.db_utils import quote_literal
+from internal.model_versioning import VersionedModelReader
+from internal.model_versioning import VersionedModelTableValidator
 from internal.model_versioning import VersionedModelWriter
 
 from utilities.control import MinWarning
@@ -39,6 +41,7 @@ from utilities.validate_args import get_cols
 from utilities.validate_args import get_cols_and_types
 from utilities.validate_args import get_expr_type
 from utilities.validate_args import is_var_valid
+from utilities.validate_args import quote_ident
 from utilities.validate_args import table_is_empty
 from utilities.validate_args import table_exists
 from utilities.validate_args import unquote_ident
@@ -51,7 +54,8 @@ def _tree_validate_args(
         split_criterion, training_table_name, output_table_name,
         id_col_name, list_of_features, dependent_variable,
         list_of_features_to_exclude, grouping_cols, weights, max_depth,
-        min_split, min_bucket, n_bins, cp, n_folds, **kwargs):
+        min_split, min_bucket, n_bins, cp, n_folds, model_repository_table,
+        **kwargs):
     """ Validate the arguments
     """
     _assert(training_table_name and
@@ -60,10 +64,9 @@ def _tree_validate_args(
     _assert(table_exists(training_table_name),
             "Decision tree error: Data table is missing.")
 
-    # _assert(not table_exists(output_table_name, only_first_schema=True),
-    #         "Decision tree error: Output table already exists.")
-    # _assert(not table_exists(add_postfix(output_table_name, "_summary"), only_first_schema=True),
-    #         "Decision tree error: Output summary table already exists.")
+    versioned_table_validator = VersionedModelTableValidator(
+        output_table_name, model_repository_table)
+    versioned_table_validator.validate_model_tables_for_train()
 
     _assert(columns_exist_in_table(training_table_name, [id_col_name]),
             "Decision tree error: ID column does not exist.")
@@ -453,6 +456,14 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
                                     cp = Cost-complexity for pruning
                                     n_folds = Number of folds for cross-validation
         @param verbose_mode: str, Verbosity of output messages
+        @param model_repository_table: str, Name of the repository table. If
+                                    not NULL, then the model will be added to
+                                    model_repository_table, which is a versioned
+                                    model table.
+        @param name: str, An optional param specifying a user defined name for
+                    the model.
+        @param description: str, An optional param specifying a user defined
+                    description of the model.
     """
     msg_level = "notice" if verbose_mode else "warning"
 
@@ -538,10 +549,13 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
             _xvalidate(**locals())
 
         plpy.notice("Creating output tables")
-        if grouping_cols:
-            _create_nonversioned_output_tables(**locals())
-        else:
+        if model_repository_table:
+            if grouping_cols:
+                plpy.error("DT error: Model versioning is currently not " \
+                    "supported for grouping.")
             _create_versioned_output_tables(**locals())
+        else:
+            _create_nonversioned_output_tables(**locals())
     return None
 # ------------------------------------------------------------
 
@@ -554,12 +568,12 @@ def _create_nonversioned_output_tables(schema_madlib, training_table_name, outpu
                           grouping_cols=None,
                           use_existing_tables=False, running_cv=False,
                           n_folds=0, null_proxy=None, **kwargs):
-
-    if not (grouping_cols or running_cv):
-        plpy.error("_create_nonversioned_output_tables must have either running_cv or grouping_cols set.")
-        return
-
-    if grouping_cols:
+    if not grouping_cols:
+        _create_result_table(
+            schema_madlib, tree_states[0], bins['cat_origin'], bins['cat_n'],
+            bins['cat_features'], bins['con_features'], output_table_name,
+            use_existing_tables, running_cv, n_folds)
+    else:
         _create_grp_result_table(
             schema_madlib, tree_states, bins, bins['cat_features'],
             bins['con_features'], output_table_name, cat_features_info_table,
@@ -574,12 +588,6 @@ def _create_nonversioned_output_tables(schema_madlib, training_table_name, outpu
         failed_groups, is_classification, n_all_rows,
         n_rows, dep_list, all_cols_types, cp, grouping_cols, 1,
         use_existing_tables, n_folds, null_proxy)
-
-    if running_cv:
-        _create_result_table_cv(schema_madlib, tree_states[0],
-                                bins['cat_origin'], bins['cat_n'], bins['cat_features'],
-                                bins['con_features'], output_table_name,
-                                use_existing_tables, running_cv, n_folds)
 
 # -------------------------------------------------------------------------
 
@@ -797,7 +805,7 @@ def _get_bins(schema_madlib, training_table_name,
             cat_features=[])
 # ------------------------------------------------------------
 
-def _create_result_table_cv(schema_madlib, tree_state,
+def _create_result_table(schema_madlib, tree_state,
                          cat_origin, cat_n, cat_features,
                          con_features, output_table_name,
                          use_existing_tables=False, running_cv=False,
@@ -821,7 +829,7 @@ def _create_result_table_cv(schema_madlib, tree_state,
         sql = header + """
                 SELECT
                     {cp} AS pruning_cp,
-                    $1 AS tree,
+                    $1 AS model_data,
                     $2 AS cat_levels_in_text,
                     $3 AS cat_n_levels,
                     $4 AS impurity_var_importance,
@@ -842,7 +850,7 @@ def _create_result_table_cv(schema_madlib, tree_state,
         sql = header + """
                 SELECT
                     {cp} AS pruning_cp,
-                    $1 AS tree,
+                    $1 AS model_data,
                     NULL::text[] AS cat_levels_in_text,
                     NULL::integer[] AS cat_n_levels,
                     $2 AS impurity_var_importance,
@@ -870,6 +878,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
                                     is_classification, n_all_rows, n_rows,
                                     dep_list, cp, all_cols_types,
                                     cat_features_info_table,
+                                    model_repository_table,
                                     grouping_cols=None,
                                     use_existing_tables=False,
                                     running_cv=False,
@@ -914,10 +923,9 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
             # Special handling for boolean since Python booleans start with
             # capitals (i.e False instead of false)
             # Note:  dep_list is sorted, hence 'false' will be first
-            dependent_var_levels = "'false, true'"
+            dependent_var_levels = ['false', 'true']
         else:
-            dependent_var_levels = '$__dep_list__${0}$__dep_list__$'.format(
-                ','.join(map(str, dep_list)))
+            dependent_var_levels = dep_list
     else:
         dependent_var_levels = "NULL"
 
@@ -926,6 +934,8 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     independent_var_types = ','.join([all_cols_types[c] for c in cat_features+con_features])
     independent_varnames = ','.join(cat_features+con_features)
 
+    # cat_features = [quote_ident(c) for c in cat_features]
+    # con_features = [quote_ident(c) for c in con_features]
     cat_features = ','.join(cat_features)
     con_features = ','.join(con_features)
 
@@ -945,9 +955,9 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
 
     model_data = tree_state['tree_state']
 
-    model_writer = VersionedModelWriter(schema_madlib, output_table_name,
-                                        'Decision Tree', 'bytea8',
-                                        name=name, description=description)
+    model_writer = VersionedModelWriter(
+        schema_madlib, output_table_name, 'Decision Tree', 'bytea8',
+        model_repository_table, name, description)
     model_writer.store_model(model_data, model_metadata, metrics, model_summary)
 
 # ------------------------------------------------------------
@@ -1568,7 +1578,7 @@ def _create_grp_result_table(
     sql = header + """
             SELECT
                 {grouping_cols},
-                {tree_state} AS tree,
+                {tree_state} AS model_data,
                 {cat_levels_val} AS cat_levels_in_text,
                 {cat_n_levels_val} AS cat_n_levels,
                 string_to_array(trim(both '{{}}' FROM {impurity_var_importance}),
@@ -1736,7 +1746,8 @@ def _get_filter_str(dependent_variable, grouping_cols):
 # -------------------------------------------------------------------------
 
 
-def _validate_predict(schema_madlib, model, source, output, use_existing_tables):
+def _validate_predict(schema_madlib, model, model_id, source, output,
+                      use_existing_tables):
     # validations for inputs
     _assert(source and source.strip().lower() not in ('null', ''),
             "Decision tree error: Invalid data table name: {0}".format(source))
@@ -1744,42 +1755,32 @@ def _validate_predict(schema_madlib, model, source, output, use_existing_tables)
             "Decision tree error: Data table ({0}) does not exist".format(source))
     _assert(not table_is_empty(source),
             "Decision tree error: Data table ({0}) is empty".format(source))
-    _assert(model and
-            model.strip().lower() not in ('null', ''),
-            "Decision tree error: Invalid model table name: {0}".format(model))
-    _assert(table_exists(model),
-            "Decision tree error: Model table ({0}) does not exist".format(model))
-    _assert(not table_is_empty(model),
-            "Decision tree error: Model table ({0}) is empty".format(model))
-    model_summary = add_postfix(model, "_summary")
-    _assert(table_exists(model_summary),
-            "Decision tree error: Model summary table ({0}) does not exist".format(model_summary))
-    _assert(not table_is_empty(model_summary),
-            "Decision tree error: Model summary table ({0}) is empty".format(model_summary))
+    model_validator = VersionedModelTableValidator(
+        out_table=model, model_id=model_id)
+    model_validator.validate_model_tables_for_predict()
+    # _assert(model and
+    #         model.strip().lower() not in ('null', ''),
+    #         "Decision tree error: Invalid model table name: {0}".format(model))
+    # _assert(table_exists(model),
+    #         "Decision tree error: Model table ({0}) does not exist".format(model))
+    # _assert(not table_is_empty(model),
+    #         "Decision tree error: Model table ({0}) is empty".format(model))
+    # model_summary = add_postfix(model, "_summary")
+    # _assert(table_exists(model_summary),
+    #         "Decision tree error: Model summary table ({0}) does not exist".format(model_summary))
+    # _assert(not table_is_empty(model_summary),
+    #         "Decision tree error: Model summary table ({0}) is empty".format(model_summary))
     _assert(output and
             output.strip().lower() not in ('null', ''),
             "Decision tree error: Invalid output table name: {0}".format(output))
     if not use_existing_tables:
         _assert(not table_exists(output),
                 "Decision tree error: Output table ({0}) already exists".format(output))
-    _assert(
-        columns_exist_in_table(
-            model,
-            ["model_data", "cat_levels_in_text", "cat_n_levels"],
-            schema_madlib),
-        "Decision tree error: Invalid model table ({0})".format(model))
-    _assert(
-        columns_exist_in_table(
-            model_summary,
-            ["grouping_cols", "id_col_name", "dependent_varname",
-             "cat_features", "con_features", "is_classification"],
-            schema_madlib),
-        "Decision tree error: Invalid model summary table ({0})".format(model_summary))
 # -------------------------------------------------------------------------
 
 
 def tree_predict(schema_madlib, model, source, output, pred_type='response',
-                 use_existing_tables=False, k=0, **kwargs):
+                 use_existing_tables=False, k=0, model_id=None, **kwargs):
     """
     Args:
         @param schema_madlib: str, Name of MADlib schema
@@ -1800,8 +1801,28 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
     Throws:
         None
     """
-    _validate_predict(schema_madlib, model, source, output, use_existing_tables)
-    model_summary = add_postfix(model, "_summary")
+    _validate_predict(schema_madlib, model, model_id, source, output,
+                      use_existing_tables)
+    # Set validate_tables=False since it is already validated in
+    # _validate_predict()
+    model_reader = VersionedModelReader(schema_madlib, model, 'bytea8',
+                                        model_id)
+    model, model_summary = model_reader.get_model_tables_for_prediction()
+    # Check if the model we are going to use is valid or not.
+    _assert(
+        columns_exist_in_table(
+            model,
+            ["model_data", "cat_levels_in_text", "cat_n_levels"],
+            schema_madlib),
+        "Decision tree error: Invalid model table ({0})".format(model))
+    _assert(
+        columns_exist_in_table(
+            model_summary,
+            ["grouping_cols", "id_col_name", "dependent_varname",
+             "cat_features", "con_features", "is_classification"],
+            schema_madlib),
+        "Decision tree error: Invalid model summary table ({0})".format(model_summary))
+    # model_summary = add_postfix(model, "_summary")
 
     # obtain the cat_features and con_features from model summary table
     summary_elements = plpy.execute("SELECT * FROM {0}".format(model_summary))[0]
@@ -1814,7 +1835,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
             "that were used during training".format(source))
     id_col_name = summary_elements["id_col_name"]
     dep_varname = summary_elements["dependent_varname"]
-    dep_levels = split_quoted_delimited_str(summary_elements["dependent_var_levels"])
+    dep_levels = summary_elements["dependent_var_levels"]
     dep_type = summary_elements['dependent_var_type']
     is_classification = summary_elements["is_classification"]
     # optional variables, default value is None
@@ -1893,7 +1914,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
         else:
             temp_col = unique_string()
             score_format = ', \n'.join([
-                '{0}[{1}] as "estimated_prob_{2}"'.format(temp_col, i, c.strip(' "'))
+                '{0}[{1}] as $_madlib_$estimated_prob_{2}$_madlib_$'.format(temp_col, i, str(c).strip(' "'))
                 for i, c in enumerate(dep_levels, start=1)])
             sql = header + """
                 SELECT
@@ -1967,7 +1988,7 @@ def tree_display(schema_madlib, model_table, dot_format=True, verbose=False,
     grouping_cols = summary["grouping_cols"]
     grouping_cols = '' if grouping_cols is None else grouping_cols + ','
     grouped_trees = plpy.execute("SELECT {grouping_cols} "
-                                 "tree, cat_levels_in_text, cat_n_levels "
+                                 "model_data as tree, cat_levels_in_text, cat_n_levels "
                                  "FROM {model_table}".
                                  format(model_table=model_table,
                                         grouping_cols=grouping_cols))
