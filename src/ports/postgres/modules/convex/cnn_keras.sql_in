@@ -352,6 +352,10 @@ $$
 LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(double precision[],
+                                                      double precision[],
+                                                      text,
+                                                      bytea);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
     /* ind_var */             DOUBLE PRECISION[],
     /* dep_var */             DOUBLE PRECISION[],

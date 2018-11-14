@@ -225,9 +225,9 @@ y_train = keras.utils.to_categorical(y_train, 26)
 mid = time.time()
 plpy.info("will try to fit now")
 keras_model.fit(x_train, y_train,
-	   batch_size=32,
-	   epochs=1,
-	   verbose=0)
+       batch_size=32,
+       epochs=1,
+       verbose=0)
 end = time.time()
 plpy.info("done with fit")
 weights_in_list = [a.tolist() for a in keras_model.get_weights()]
@@ -274,7 +274,10 @@ return json.dumps(normalized_weights)
 $$
 LANGUAGE plpythonu;
 
-DROP AGGREGATE MADLIB_SCHEMA.cnn_keras_gpu_step(double precision[], double precision[], text, json);
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_gpu_step(double precision[],
+                                                          double precision[],
+                                                          text,
+                                                          json);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_gpu_step(
     /* ind_var */             DOUBLE PRECISION[],
     /* dep_var */             DOUBLE PRECISION[],
