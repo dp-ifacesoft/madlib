@@ -61,7 +61,7 @@ RETURNS VOID AS $$
         config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
 
-    n_classes = 26
+    n_classes = 365
 
     def create_model_architecture(n_classes):
         model = Sequential()
@@ -118,6 +118,9 @@ RETURNS VOID AS $$
         model.add(Flatten())
         model.add(Dense(26))
         model.add(Activation('softmax'))
+
+
+##########
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
         # model.summary()
 
@@ -279,7 +282,8 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 x_train /= 255.0
 
 y_train = np.array(dep_var)
-y_train = keras.utils.to_categorical(y_train, 26)
+n_classes = 365
+y_train = keras.utils.to_categorical(y_train, n_classes)
 #plpy.info("y train shape is {0}".format(y_train.shape))
 mid = time.time()
 plpy.info("will try to fit now")
