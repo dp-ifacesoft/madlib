@@ -116,9 +116,14 @@ RETURNS VOID AS $$
         model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
         model.add(Flatten())
-        model.add(Dense(26))
+        model.add(Dense(4096))
+        model.add(Activation('relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(4096))
+        model.add(Activation('relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(365))
         model.add(Activation('softmax'))
-
 
 ##########
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
@@ -130,7 +135,7 @@ RETURNS VOID AS $$
 
     model = create_model_architecture(n_classes)
     sql_test_x = """
-        SELECT independent_varname as x, dependent_varname as y FROM {0} limit 2
+        SELECT x, y FROM {0} limit 2
         """.format(test_table)
     plpy.info('Test sql is : {0}'.format(sql_test_x))
     testData = plpy.execute(sql_test_x)
@@ -138,10 +143,10 @@ RETURNS VOID AS $$
 
 
     all_x_train = np.ndarray((0,150528))
-    all_y_train = np.ndarray((0,1))
+    all_y_train = np.ndarray((0))
     for i in range(len(testData)):
-        x_train = np.asarray(testData[i]['x'])
-        y_train = np.asarray(testData[i]['y'])
+        x_train = np.asarray((testData[i]['x'],))
+        y_train = np.asarray((testData[i]['y'],))
         #plpy.info('i : {0}'.format(i))
         #plpy.info('X shape : {0}'.format(x_train.shape))
         #plpy.info('Y shape : {0}'.format(y_train.shape))
@@ -156,17 +161,17 @@ RETURNS VOID AS $$
     plpy.info('Y shape : {0}'.format(all_y_train.shape))
     all_x_train /= 255.0
     all_y_train = keras.utils.to_categorical(all_y_train, n_classes)
-    agg_scores = []
+
     eval_start = time.time()
-    #agg_scores.append(model.evaluate(all_x_train, all_y_train, verbose=0)[1])
+    model.evaluate(all_x_train, all_y_train, verbose=0)
     eval_time = time.time()
     plpy.info("time to evaluate model = {0}".format(eval_time-eval_start))
 
-    #agg_scores = []
+    agg_scores = []
     sql = """
         SELECT MADLIB_SCHEMA.cnn_keras_step(
-            independent_varname::DOUBLE PRECISION[],
-            dependent_varname::DOUBLE PRECISION[],
+            x::SMALLINT[],
+            y::SMALLINT[],
             $MAD${0}$MAD$::text,
             $1
         ) AS keras_model
@@ -222,8 +227,8 @@ $$ language plpythonu;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
     state               BYTEA,
-    ind_var             DOUBLE PRECISION[],
-    dep_var             DOUBLE PRECISION[],
+    ind_var             SMALLINT[],
+    dep_var             SMALLINT[],
     architecture        TEXT,
     previous_state      BYTEA
 ) RETURNS BYTEA AS
@@ -277,7 +282,7 @@ keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
 if ind_var == None:
    return None
 #plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
-x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
+x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3).astype("float16")
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255.0
 
@@ -357,8 +362,8 @@ DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(double precision[],
                                                       text,
                                                       bytea);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
-    /* ind_var */             DOUBLE PRECISION[],
-    /* dep_var */             DOUBLE PRECISION[],
+    /* ind_var */             SMALLINT[],
+    /* dep_var */             SMALLINT[],
     /* architecture */        TEXT,
     /* previous_state */      BYTEA
 )(
