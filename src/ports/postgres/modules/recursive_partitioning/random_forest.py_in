@@ -1566,7 +1566,7 @@ def get_var_importance(schema_madlib, model_table, output_table, **kwargs):
     plpy.execute("""
         CREATE TABLE {output_table} AS
             SELECT {grouping_cols_comma}
-                unnest(regexp_split_to_array(independent_varnames, ',')) AS feature,
+                unnest(independent_varnames) AS feature,
                 {oob_var_importance_str}
                 {impurity_var_importance_str}
             FROM {importance_model_table}, {summary_table}

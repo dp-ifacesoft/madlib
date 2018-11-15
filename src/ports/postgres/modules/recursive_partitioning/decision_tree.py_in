@@ -67,6 +67,12 @@ def _tree_validate_args(
     versioned_table_validator = VersionedModelTableValidator(
         output_table_name, model_repository_table)
     versioned_table_validator.validate_model_tables_for_train()
+    if n_folds and model_repository_table:
+        plpy.error("DT error: Model versioning is currently not supported " \
+            "for cross validation.")
+    if n_folds and grouping_cols:
+        plpy.error("DT error: Model versioning is currently not " \
+            "supported for grouping.")
 
     _assert(columns_exist_in_table(training_table_name, [id_col_name]),
             "Decision tree error: ID column does not exist.")
@@ -482,7 +488,6 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
     pruning_param_dict = _extract_pruning_params(pruning_params)
     cp = pruning_param_dict['cp']
     n_folds = pruning_param_dict['n_folds']
-
     # null handing parameters: max_n_surr and null_as_category
     null_handling_dict = extract_keyvalue_params(
         null_handling_params,
@@ -550,9 +555,6 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
 
         plpy.notice("Creating output tables")
         if model_repository_table:
-            if grouping_cols:
-                plpy.error("DT error: Model versioning is currently not " \
-                    "supported for grouping.")
             _create_versioned_output_tables(**locals())
         else:
             _create_nonversioned_output_tables(**locals())
@@ -931,13 +933,15 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
 
     dependent_var_type = dep_type
     dependent_varname = dependent_variable
-    independent_var_types = ','.join([all_cols_types[c] for c in cat_features+con_features])
-    independent_varnames = ','.join(cat_features+con_features)
+    independent_var_types = [all_cols_types[c] for c in cat_features+con_features]
+    independent_varnames = cat_features + con_features
+    # independent_var_types = ','.join([all_cols_types[c] for c in cat_features+con_features])
+    # independent_varnames = ','.join(cat_features+con_features)
 
     # cat_features = [quote_ident(c) for c in cat_features]
     # con_features = [quote_ident(c) for c in con_features]
-    cat_features = ','.join(cat_features)
-    con_features = ','.join(con_features)
+    # cat_features = ','.join(cat_features)
+    # con_features = ','.join(con_features)
 
     # List of keys in JSON summary column. NOTE that these names must be the
     # same as the corresponding variable names.
@@ -1676,16 +1680,34 @@ def _create_summary_table(
             # Special handling for boolean since Python booleans start with
             # capitals (i.e False instead of false)
             # Note:  dep_list is sorted, hence 'false' will be first
-            dep_list_str = "'false, true'"
+            dependent_var_levels = ['false', 'true']
         else:
-            dep_list_str = '$__dep_list__${0}$__dep_list__$'.format(
-                ','.join(map(str, dep_list)))
+            dependent_var_levels = dep_list
+            # dependent_var_levels = '$__dep_list__${0}$__dep_list__$'.format(
+            #     ','.join(map(str, dep_list)))
+        dependent_var_levels = py_list_to_sql_string(
+            map(quote_literal, dependent_var_levels),
+            array_type='text',
+            long_format=True)
     else:
-        dep_list_str = "NULL"
-    indep_type = ', '.join(all_cols_types[c] for c in cat_features+con_features)
-    independent_varnames = ','.join(cat_features+con_features)
-    cat_features_str = ','.join(cat_features)
-    con_features_str = ','.join(con_features)
+        dependent_var_levels = "NULL"
+    indep_var_types = [all_cols_types[c] for c in cat_features+con_features]
+    indep_var_types = py_list_to_sql_string(
+        map(quote_literal, indep_var_types),
+        array_type='text',
+        long_format=True)
+    # dep_levels_array_str = py_list_to_sql_string(map(quote_literal, dep_levels),
+    #                                                  'TEXT',
+    #                                                  long_format=True)
+    independent_varnames = cat_features+con_features
+    independent_varnames = py_list_to_sql_string(
+        map(quote_literal, independent_varnames),
+        array_type='text',
+        long_format=True)
+    cat_features_array = py_list_to_sql_string(
+        map(quote_literal, cat_features), array_type='text', long_format=True)
+    con_features_array = py_list_to_sql_string(
+        map(quote_literal, con_features), array_type='text', long_format=True)
     if grouping_cols:
         grouping_cols_str = "'{0}'".format(grouping_cols)
     else:
@@ -1713,17 +1735,17 @@ def _create_summary_table(
                 '{list_of_features}'::text     AS list_of_features,
                 '{list_of_features_to_exclude}'::text     AS list_of_features_to_exclude,
                 '{dependent_variable}'::text   AS dependent_varname,
-                '{independent_varnames}'::text     AS independent_varnames,
-                '{cat_features_str}'::text     AS cat_features,
-                '{con_features_str}'::text     AS con_features,
+                {independent_varnames}         AS independent_varnames,
+                {cat_features_array}             AS cat_features,
+                {con_features_array}             AS con_features,
                 {grouping_cols_str}::text      AS grouping_cols,
                 {n_groups}::integer            AS num_all_groups,
                 {num_failed_groups}::integer   AS num_failed_groups,
                 {n_rows}::integer              AS total_rows_processed,
                 {n_rows_skipped}::integer      AS total_rows_skipped,
-                {dep_list_str}::text           AS dependent_var_levels,
+                {dependent_var_levels}         AS dependent_var_levels,
                 '{dep_type}'::text             AS dependent_var_type,
-                '{indep_type}'::text           AS independent_var_types,
+                {indep_var_types}              AS independent_var_types,
                 {cp_str}                       AS input_cp,
                 {n_folds}::integer             AS n_folds,
                 {null_proxy_str}::text         AS null_proxy
@@ -1827,9 +1849,9 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
     # obtain the cat_features and con_features from model summary table
     summary_elements = plpy.execute("SELECT * FROM {0}".format(model_summary))[0]
 
-    list_of_features = split_quoted_delimited_str(summary_elements["independent_varnames"])
-    cat_features = split_quoted_delimited_str(summary_elements["cat_features"])
-    con_features = split_quoted_delimited_str(summary_elements["con_features"])
+    list_of_features = summary_elements["independent_varnames"]
+    cat_features = summary_elements["cat_features"]
+    con_features = summary_elements["con_features"]
     _assert(is_var_valid(source, ','.join(list_of_features)),
             "Decision tree error: Missing columns in predict data table ({0}) "
             "that were used during training".format(source))
@@ -1914,7 +1936,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
         else:
             temp_col = unique_string()
             score_format = ', \n'.join([
-                '{0}[{1}] as $_madlib_$estimated_prob_{2}$_madlib_$'.format(temp_col, i, str(c).strip(' "'))
+                '{0}[{1}] as "estimated_prob_{2}"'.format(temp_col, i, c.strip(' "'))
                 for i, c in enumerate(dep_levels, start=1)])
             sql = header + """
                 SELECT
@@ -1982,8 +2004,8 @@ def tree_display(schema_madlib, model_table, dot_format=True, verbose=False,
     dep_levels = [''] if not dep_levels else split_quoted_delimited_str(dep_levels)
     table_name = summary["source_table"]
     is_regression = not summary["is_classification"]
-    cat_features_str = split_quoted_delimited_str(summary['cat_features'])
-    con_features_str = split_quoted_delimited_str(summary['con_features'])
+    cat_features_str = summary['cat_features']
+    con_features_str = summary['con_features']
 
     grouping_cols = summary["grouping_cols"]
     grouping_cols = '' if grouping_cols is None else grouping_cols + ','
