@@ -60,8 +60,9 @@ RETURNS VOID AS $$
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
+        run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
 
-    n_classes = 365
+    n_classes = 11
 
     def create_model_architecture(n_classes):
         model = Sequential()
@@ -122,18 +123,23 @@ RETURNS VOID AS $$
         model.add(Dense(4096))
         model.add(Activation('relu'))
         model.add(Dropout(0.5))
-        model.add(Dense(365))
+        model.add(Dense(n_classes))
         model.add(Activation('softmax'))
 
 ##########
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
         # model.summary()
 
-        model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
+        parallel_model = keras.utils.multi_gpu_model(model, gpus=8)
 
-        return model
+        parallel_model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
 
-    model = create_model_architecture(n_classes)
+        return {"model" : model, "parallel_model" : parallel_model}
+
+    model_template = create_model_architecture(n_classes)
+    model = model_template["model"]
+    parallel_model = model_template["parallel_model"]
+
     sql_test_x = """
         SELECT x, y FROM {0} limit 2
         """.format(test_table)
@@ -160,10 +166,10 @@ RETURNS VOID AS $$
     plpy.info('X shape : {0}'.format(all_x_train.shape))
     plpy.info('Y shape : {0}'.format(all_y_train.shape))
     all_x_train /= 255.0
-    all_y_train = keras.utils.to_categorical(all_y_train, n_classes)
+    all_y_train = keras.utils.to_categorical(all_y_train,n_classes)
 
     eval_start = time.time()
-    model.evaluate(all_x_train, all_y_train, verbose=0)
+    parallel_model.evaluate(all_x_train, all_y_train, verbose=0)
     eval_time = time.time()
     plpy.info("time to evaluate model = {0}".format(eval_time-eval_start))
 
@@ -201,7 +207,8 @@ RETURNS VOID AS $$
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         plpy.info('Time elapsed since start of iter 0: {1}'.format(i, iter_endtime-start_time))
-        model_eval = create_model_architecture(n_classes)
+        model_template = create_model_architecture(n_classes)
+        model_eval = model_template["parallel_model"]
         weightsList = []
         j = 0
         for a in filter(None,model_string.split('splitter')):
@@ -245,6 +252,7 @@ from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadd
 from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
 from keras import backend as keras_backend
+real_start = time.time()
 plpy.info('importing tensorflow from segment')
 use_cpu_only=False
 if use_cpu_only:
@@ -255,6 +263,7 @@ else:
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
+    run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
 
 if not state:
     # model needs to be initialized
@@ -274,11 +283,23 @@ for a in filter(None,serialized_state.split('splitter')):
     arr = np.fromstring(a, dtype=np.float32)
     weightsList.append(arr.reshape(model_shapes[j]))
     j+=1
+after_deser = time.time()
 keras_model.set_weights(weightsList)
+prep_1 = time.time()  # set weights
+try:
+    parallel_model = keras.utils.multi_gpu_model(keras_model, gpus=8)
+    "Training using GPU's"
+except ValueError:
+    # This segment doesn't have GPU's enabled
+    parallel_model = keras_model
+    "Training using CPU's only"
+
+prep_2 = time.time()  # multi_gpu_model
 # We must run model.compile again, after obtaining the architecutre.
-keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+parallel_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
     loss='categorical_crossentropy',
-    metrics=['accuracy'])
+    metrics=['accuracy'],options=run_options)
+prep_3 = time.time() # compile()
 if ind_var == None:
    return None
 #plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
@@ -287,12 +308,16 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3).astype("float16")
 x_train /= 255.0
 
 y_train = np.array(dep_var)
-n_classes = 365
-y_train = keras.utils.to_categorical(y_train, n_classes)
+n_classes = 11
+prep_4 = time.time() # convert x,y input to numpy arrays
+y_train = keras.utils.to_categorical(y_train,n_classes)
 #plpy.info("y train shape is {0}".format(y_train.shape))
-mid = time.time()
+mid = time.time()  # to categorical
+
+plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy arrays {}, to_categorical() {}".format(prep_1 - after_deser, prep_2 - prep_1, prep_3-prep_2, prep_4-prep_3, mid-prep_4))
+
 plpy.info("will try to fit now")
-keras_model.fit(x_train, y_train,
+parallel_model.fit(x_train, y_train,
                batch_size=32,
                epochs=1,
                verbose=0)
@@ -303,7 +328,7 @@ for a in keras_model.get_weights():
     model_string += a.tostring()
     model_string += "splitter"
 before_return = time.time()
-plpy.info("times = {0}, {1}, {2}".format(mid-start, end-mid, before_return-end))
+plpy.info("DeSer ModelArch: {0}, DeSer ModelState: {1}, Prep: {2}, Fit: {3}, Ser ModelState: {4}".format(start-real_start,after_deser-start, mid-after_deser, end-mid, before_return-end))
 keras_backend.clear_session()
 #plpy.info("TRANSITION done.")
 return model_string
