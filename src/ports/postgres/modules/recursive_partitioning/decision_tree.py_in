@@ -2699,3 +2699,7 @@ def boosted_tree_train(schema_madlib, training_table_name, output_table_name,
 
         # plpy.info(plpy.execute(""" SELECT sum({dependent_variable}*{dependent_variable}) FROM temp_boosted """.format(**locals())))
 
+        ### BDT implementation usage
+        # create table t3 as select madlib.__bdt_step(y, x, feat,val, NULL) as res from dtb_5x_200K_10f, (select array_agg(feat) as feat, array_agg(val) as val from dtb_bins) q;
+        # select madlib.__bdt_pick(y, x, feat, val, left_values, right_values, NULL::double precision[]) from dtb_5x_200K_10f,(select (res).left_values as left_values, (res).right_values as right_values from t3)q1, (select array_agg(feat) as feat, array_agg(val) as val from dtb_bins) q2;
+        # update temp_boosted set y = res from (select id, case when x[feat]<=val then (y - left_values[3]) else y - right_values[3] end as res from dtb_5x_200K_10f, t2,(select feat,val from dtb_bins where id = 2+1)q2)q1 where q1.id = temp_boosted.id;
