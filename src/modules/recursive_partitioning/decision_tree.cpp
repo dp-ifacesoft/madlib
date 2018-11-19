@@ -1191,7 +1191,10 @@ class BDTPickState {
             widthOfFeat = inWidthOfFeat;
 
             for (int i = 0 ; i < widthOfFeat ; i ++){
-                res_sq[i] = 0;
+                res_sq_left[i] = 0;
+                res_cnt_left[i] = 0;
+                res_sq_right[i] = 0;
+                res_cnt_right[i] = 0;
             }
         }
 
@@ -1206,13 +1209,16 @@ class BDTPickState {
 
     private:
         static inline size_t arraySize(const uint16_t inWidthOfFeat) {
-            return 2 + inWidthOfFeat;
+            return 2 + 4*inWidthOfFeat;
         }
         void rebind(uint16_t inWidthOfFeat) {
 
             widthOfFeat.rebind(&mStorage[0]);
             numRows.rebind(&mStorage[1]);
-            res_sq.rebind(&mStorage[2], inWidthOfFeat);
+            res_sq_left.rebind(&mStorage[2], inWidthOfFeat);
+            res_cnt_left.rebind(&mStorage[2]+inWidthOfFeat, inWidthOfFeat);
+            res_sq_right.rebind(&mStorage[2]+2*inWidthOfFeat, inWidthOfFeat);
+            res_cnt_right.rebind(&mStorage[2]+3*inWidthOfFeat, inWidthOfFeat);
 
         }
 
@@ -1221,7 +1227,10 @@ class BDTPickState {
     public:
         typename HandleTraits<Handle>::ReferenceToUInt16 widthOfFeat;
         typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap res_sq;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap res_sq_left;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap res_cnt_left;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap res_sq_right;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap res_cnt_right;
 };
 
 AnyType
@@ -1281,9 +1290,11 @@ bdt_pick_transition::run(AnyType &args){
 
         int feature_index = features[i];
         if ( x[feature_index] <= feature_values[i] ){
-            state.res_sq[i] += (y - left_values[i]) * (y - left_values[i]);
+            state.res_sq_left[i] += (y - left_values[i]) * (y - left_values[i]);
+            state.res_cnt_left[i] ++;
         } else {
-            state.res_sq[i] += (y - right_values[i]) * (y - right_values[i]);
+            state.res_sq_right[i] += (y - right_values[i]) * (y - right_values[i]);
+            state.res_cnt_right[i] ++;
         }
 
     }
@@ -1302,7 +1313,10 @@ bdt_pick_merge::run(AnyType &args){
 
     for (int i = 0 ; i < stateLeft.widthOfFeat ; i++){
 
-        stateLeft.res_sq[i] += stateRight.res_sq[i];
+        stateLeft.res_sq_left[i] += stateRight.res_sq_left[i];
+        stateLeft.res_sq_right[i] += stateRight.res_sq_right[i];
+        stateLeft.res_cnt_left[i] += stateRight.res_cnt_left[i];
+        stateLeft.res_cnt_right[i] += stateRight.res_cnt_right[i];
     }
 
     return stateLeft;
@@ -1314,12 +1328,22 @@ bdt_pick_final::run(AnyType &args) {
 
     BDTPickState<MutableArrayHandle<double> > state = args[0];
 
-    double res_min = state.res_sq[0];
     int index = 0;
-    for (int i = 1; i < state.widthOfFeat ; i ++){
 
-        if (state.res_sq[i] < res_min){
-            res_min = state.res_sq[i];
+    while (state.res_cnt_left[index] == 0 || state.res_cnt_right[index] == 0){
+        index ++;
+    }
+
+    double res_min = (state.res_sq_left[index]/state.res_cnt_left[index])
+                    +(state.res_sq_right[index]/state.res_cnt_right[index]);
+
+    double current_res;
+    for (int i = index+1; i < state.widthOfFeat ; i ++){
+
+        current_res = (state.res_sq_left[i]/state.res_cnt_left[i])
+                    +(state.res_sq_right[i]/state.res_cnt_right[i]);
+        if (current_res < res_min){
+            res_min = current_res;
             index = i;
         }
 
