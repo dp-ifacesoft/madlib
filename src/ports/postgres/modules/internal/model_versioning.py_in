@@ -17,7 +17,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import datetime
 import json
 import plpy
 import types
@@ -44,20 +43,49 @@ MODEL_TABLE_COLS = OrderedDict([
     ('grouping_values','text'),
     ('model_type','text'),
     ('model_data','bytea'),
-    ('model_metadata','JSON'),
-    ('metrics','JSON')
+    ('attributes','JSON')
     ])
+# TODO: Expose functions to populate non-JSON columns from every calling fns.
 MODEL_TABLE_SUMMARY_COLS = OrderedDict([
     ('model_id','serial'),
     ('model_type','text'),
     ('summary','JSON'),
     ('start_training_time','timestamp'),
     ('end_training_time','timestamp'),
+    ('source_table', 'text'),
+    ('model_table', 'text'),
+    ('model_repository', 'text'),
+    ('dependent_varname', 'text'),
+    ('list_of_features', 'text'),
+    ('list_of_features_to_exclude', 'text'),
+    ('independent_varnames', 'text[]'),
+    ('grouping_cols', 'text'),
     ('name','text'),
     ('description','text'),
     ('madlib_version','text'),
     ('__madlib_internal_id__','text')
     ])
+COLS_FOR_VIEW_FROM_SUMMARY_REPO = [
+    'model_type',
+    'start_training_time',
+    'end_training_time',
+    'source_table',
+    'model_table',
+    'model_repository',
+    'dependent_varname',
+    'list_of_features',
+    'list_of_features_to_exclude',
+    'independent_varnames',
+    'grouping_cols',
+    'name',
+    'description']
+SUMMARY_REPO_COLS_TO_QUOTE = [
+    'dependent_varname',
+    'list_of_features',
+    'list_of_features_to_exclude',
+    'grouping_cols',
+    'name',
+    'description']
 
 def get_summary_tablename(tbl):
     return add_postfix(tbl, '_summary') if tbl else None
@@ -240,8 +268,7 @@ class VersionedModelViewCreator(object):
                    input_table_name=input_table_name)
         return view_header
 
-    def create_view(self, model_metadata_types_dict=None,
-                    metrics_colstypes_dict=None,
+    def create_view(self, model_attributes_types_dict=None,
                     summary_colstypes_dict=None):
         """
             Create views for model table and summary table. The columns in the
@@ -266,10 +293,8 @@ class VersionedModelViewCreator(object):
         # Override the types of automatically found column types if applicable.
         summary_colstypes_dict = self._get_view_cols_types_for_json(
             model_summary_json['summary'], summary_colstypes_dict)
-        model_metadata_colstypes_dict = self._get_view_cols_types_for_json(
-            model_repo_jsons['model_metadata'], model_metadata_types_dict)
-        metrics_colstypes_dict = self._get_view_cols_types_for_json(
-            model_repo_jsons['metrics'], metrics_colstypes_dict)
+        model_attributes_types_dict = self._get_view_cols_types_for_json(
+            model_repo_jsons['attributes'], model_attributes_types_dict)
 
         # Create view for the model table. Necessary data could be stored in
         # multiple JSON columns such as model_metadata and metrics. We also
@@ -278,8 +303,7 @@ class VersionedModelViewCreator(object):
 
         repo_view_sql = self._gen_create_view_sql(
             self.model_repo_table, self.repo_view_name,
-            model_metadata=model_metadata_colstypes_dict,
-            metrics=metrics_colstypes_dict)
+            attributes=model_attributes_types_dict)
         plpy.execute(repo_view_sql)
         # Create view for the summary table. All necessary data is stored
         # in the summary JSON column of the repo_summary table.
@@ -335,8 +359,8 @@ class VersionedModelViewCreator(object):
         # create view latest_model as
         #     with latest as (select * from train_output order by model_id = 1)
         #     select
-        #         (latest.model_metadata->>'pruning_cp')::int as pruning_cp,
-        #         (latest.model_metadata->>'tree_depth')::int as tree_depth
+        #         (latest.model_attributes->>'pruning_cp')::int as pruning_cp,
+        #         (latest.model_attributes->>'tree_depth')::int as tree_depth
         #         latest.model_type,
         #         madlib.bytea_to_bytea8(latest.model_data)::madlib.bytea8 as model_data,
         #         a1.cat_n_levels,
@@ -349,7 +373,7 @@ class VersionedModelViewCreator(object):
         #             ) as aa1
         #         ) as a1,
         #         (select array_agg(v) as cat_levels_in_text from
-        #             (select ('[' || json_array_elements( model_metadata->'cat_levels_in_text') || ']'
+        #             (select ('[' || json_array_elements( model_attributes->'cat_levels_in_text') || ']'
         #                     )::json->>0 as v from latest
         #             ) as aa2
         #         ) as a2,
@@ -386,6 +410,10 @@ class VersionedModelViewCreator(object):
                     self.model_data_type))
             select_clause += ', ' + model_data_str.format(
                 schema_madlib=self.schema_madlib)
+        # TODO: Summary repo table has columns we want in the view. Add them,
+        # we are currently only creating columns from the summary JSON column.
+        elif table_name == self.model_repo_summary_table:
+            select_clause += ', ' + ', '.join(COLS_FOR_VIEW_FROM_SUMMARY_REPO)
 
         # If any of the JSON keys had array values, the select statement is
         # slightly more involved since we must use JSON functions to get the
@@ -418,9 +446,9 @@ class VersionedModelViewCreator(object):
         ## ----------------------------------------------------------------- ##
         ## ----------------------------------------------------------------- ##
         # Example of what we want to return for a scalar col, where JSON blob
-        # is `model_metadata`, and the key which contains a scalar value in that
+        # is `model_attributes`, and the key which contains a scalar value in that
         # blob is `pruning_cp`:
-        # select (latest.model_metadata->>'pruning_cp')::int as pruning_cp
+        # select (latest.model_attributes->>'pruning_cp')::int as pruning_cp
         ## ----------------------------------------------------------------- ##
         ## ----------------------------------------------------------------- ##
         select_scalars_list = ["({0}.{1}->>'{2}')::{3} AS {2}".format(
@@ -459,10 +487,10 @@ class VersionedModelViewCreator(object):
         # ) as a1,
 
         # Example of what we want to return for a TEXT array from a json
-        # object, where the json column is `model_metadata`, and the key in
+        # object, where the json column is `model_attributes`, and the key in
         # the blob that contains a TEXT array value is `cat_levels_in_text`:
         # (select array_agg(v) as cat_levels_in_text from
-        #     (select ('[' || json_array_elements( model_metadata->'cat_levels_in_text') || ']'
+        #     (select ('[' || json_array_elements( model_attributes->'cat_levels_in_text') || ']'
         #             )::json->>0 as v from latest
         #     ) as aa2
         # ) as a2,
@@ -588,7 +616,7 @@ class VersionedModelViewCreator(object):
             model_repo table and model_repo_summary.
         """
         model_repo_jsons = plpy.execute("""
-                SELECT model_metadata, metrics
+                SELECT attributes
                 FROM {0}
                 WHERE model_id={1}
             """.format(self.model_repo_table, self.model_id))
@@ -606,17 +634,13 @@ class VersionedModelViewCreator(object):
         return model_repo_jsons[0], model_summary_json[0]
 
 class VersionedModelWriter(object):
-    def __init__(self, schema_madlib, model_view, model_type, model_data_type,
-                 model_repository_table, name='', description=''):
+    def __init__(self, schema_madlib, model_data_type, model_type, model_view,
+                 model_repository_table):
         self.schema_madlib = schema_madlib
         self.model_view = model_view
         self.model_view_summary = get_summary_tablename(model_view)
         self.model_type = model_type
-        self.name = name
-        self.description = description
         self.model_data_type = model_data_type
-        self.start_training_time = None
-        self.end_training_time = None
         if model_repository_table:
             self.model_repo_table = model_repository_table
             self.model_repo_table_summary = get_summary_tablename(
@@ -629,12 +653,6 @@ class VersionedModelWriter(object):
         validator.validate_model_tables_for_train()
         if not validator.repo_tables_exist:
             self._create_model_repo_tables()
-
-    def record_training_start_time():
-        self.start_training_time = datetime.datetime.now()
-
-    def record_training_end_time():
-        self.end_training_time = datetime.datetime.now()
 
     def _create_model_repo_tables(self):
         if is_platform_pg():
@@ -660,12 +678,13 @@ class VersionedModelWriter(object):
                       **locals())
         plpy.execute(create_model_summary_sql)
 
-    def store_model(self, model_data, model_metadata, metrics, model_summary,
-                    start_time=None, end_time=None):
+    def store_model(self, model_data, model_attributes_json_dict,
+                    repo_summary_cols_dict, model_summary_json_dict):
         # TODO should we validate if model_data's type == self.model_data_type
         model_id = self._store_model_table_summary(
-            start_time, end_time, model_summary)
-        self._store_model_table(model_id, model_data, model_metadata, metrics)
+            repo_summary_cols_dict, model_summary_json_dict)
+        self._store_model_table(
+            model_id, model_data, model_attributes_json_dict)
 
         view_creator = VersionedModelViewCreator(self.schema_madlib,
                                                  self.model_repo_table,
@@ -675,25 +694,51 @@ class VersionedModelWriter(object):
                                                  validate_tables=False)
         view_creator.create_view()
 
-    # TODO think about adding start_time to __init__ or provide a way for users to call a function
+    def _get_quoted_str_for_text_summary_cols(self, input_dict):
+        for key in SUMMARY_REPO_COLS_TO_QUOTE:
+            input_dict[key] = '{0}{1}{0}'.format('$_madlib_$', input_dict[key])\
+                if input_dict[key] else "NULL"
+
     # TODO add quote ident
-    # that starts and stops the timer
-    def _store_model_table_summary(self, start_time, end_time, model_summary):
-        model_summary = self._to_json(model_summary)
+    def _store_model_table_summary(self, repo_summary_cols_dict,
+                                   model_summary_json):
+        model_summary_json = self._to_json(model_summary_json)
         version = madlib_version(self.schema_madlib)
         madlib_internal_id = unique_string(prefix_has_temp=False)
+        # Get values of other columns in summary repo table from
+        # repo_summary_cols_dict
+        start_time = repo_summary_cols_dict['start_training_time'] \
+            if repo_summary_cols_dict['start_training_time'] else 'NULL'
+        end_time = repo_summary_cols_dict['end_training_time'] \
+            if repo_summary_cols_dict['end_training_time'] else 'NULL'
+        self._get_quoted_str_for_text_summary_cols(repo_summary_cols_dict)
 
-        start_time = start_time if start_time else 'NULL'
-        end_time = end_time if end_time else 'NULL'
+        model_table = self.model_view
+        model_repository = self.model_repo_table
+
+        # For now the calling function is expected to handle
+        # special characters for all text columns in the summary repo table.
         summary_table_cols = ', '.join(['{0}'.format(colname)
             for colname in MODEL_TABLE_SUMMARY_COLS if colname != 'model_id'])
+        repo_summary_cols_dict.update(locals())
         sql = """
             INSERT INTO {self.model_repo_table_summary} ({summary_table_cols})
-            VALUES ('{self.model_type}', $_madlib_${model_summary}$_madlib_$,
-                    {start_time}, {end_time}, $_madlib_${self.name}$_madlib_$,
-                    $_madlib_${self.description}$_madlib_$, '{version}',
+            VALUES ('{self.model_type}',
+                    $_madlib_${model_summary_json}$_madlib_$,
+                    '{start_time}'::timestamp, '{end_time}'::timestamp,
+                    $_madlib_${source_table}$_madlib_$,
+                    $_madlib_${model_table}$_madlib_$,
+                    $_madlib_${model_repository}$_madlib_$,
+                    {dependent_varname},
+                    {list_of_features},
+                    {list_of_features_to_exclude},
+                    {independent_varnames},
+                    {grouping_cols}::TEXT,
+                    {name},
+                    {description},
+                    '{version}',
                     '{madlib_internal_id}')
-        """.format(**locals())
+        """.format(**repo_summary_cols_dict)
         plpy.execute(sql)
         model_id = plpy.execute("""
                 SELECT model_id
@@ -703,9 +748,8 @@ class VersionedModelWriter(object):
                        madlib_internal_id=madlib_internal_id))[0]['model_id']
         return model_id
 
-    def _store_model_table(self, model_id, model_data, model_metadata, metrics):
-        model_metadata = self._to_json(model_metadata)
-        metrics = self._to_json(metrics)
+    def _store_model_table(self, model_id, model_data, model_attributes):
+        model_attributes = self._to_json(model_attributes)
         if is_valid_psql_type(self.model_data_type, ONLY_ARRAY) \
                 and type(model_data) == list:
             #TODO may have performance problems. compare with writing this to a table
@@ -721,8 +765,8 @@ class VersionedModelWriter(object):
                     for colname in MODEL_TABLE_COLS])
         sql = """INSERT INTO {self.model_repo_table} ({model_table_cols})
                  VALUES ('{model_id}', NULL, '{self.model_type}',
-                         {model_data_query}, $_madlib_${model_metadata}$_madlib_$,
-                         $_madlib_${metrics}$_madlib_$)
+                         {model_data_query},
+                         $_madlib_${model_attributes}$_madlib_$)
         """.format(**locals())
         plpy.execute(sql)
 

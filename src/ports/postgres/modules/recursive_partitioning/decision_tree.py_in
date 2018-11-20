@@ -8,7 +8,9 @@
 """
 
 from __future__ import division
+import datetime
 import plpy
+
 from math import sqrt
 from operator import itemgetter
 from itertools import groupby
@@ -471,8 +473,9 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
         @param description: str, An optional param specifying a user defined
                     description of the model.
     """
-    msg_level = "notice" if verbose_mode else "warning"
+    start_training_time = datetime.datetime.now()
 
+    msg_level = "notice" if verbose_mode else "warning"
     # Set default values for all arguments
     split_criterion = 'gini' if not split_criterion else split_criterion
     max_depth = 7 if max_depth is None else max_depth
@@ -555,6 +558,7 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
 
         plpy.notice("Creating output tables")
         if model_repository_table:
+            end_training_time = datetime.datetime.now()
             _create_versioned_output_tables(**locals())
         else:
             _create_nonversioned_output_tables(**locals())
@@ -868,9 +872,9 @@ def _create_result_table(schema_madlib, tree_state,
 
 # ------------------------------------------------------------
 
-def _get_summary_dict(fields, **kwargs):
+def _filter_locals_dict(fields, **kwargs):
     # TODO: check with rest of AA, if we want to change this
-    return { x : kwargs[x] for x in fields }
+    return {x : kwargs[x] for x in fields}
 
 def _create_versioned_output_tables(schema_madlib, training_table_name,
                                     output_table_name, tree_states, bins,
@@ -881,6 +885,8 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
                                     dep_list, cp, all_cols_types,
                                     cat_features_info_table,
                                     model_repository_table,
+                                    start_training_time,
+                                    end_training_time,
                                     grouping_cols=None,
                                     use_existing_tables=False,
                                     running_cv=False,
@@ -913,10 +919,12 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     depth = (tree_state['pruned_depth'] if 'pruned_depth' in tree_state
              else tree_state['tree_depth'])
 
-    model_metadata = dict(tree_depth=depth, pruning_cp=tree_state['cp'],
-                          cat_levels_in_text=cat_origin)
-    metrics = dict(cat_n_levels=cat_n,
-                   impurity_var_importance=tree_state['impurity_var_importance'])
+    model_attributes = dict(
+        tree_depth=depth,
+        pruning_cp=tree_state['cp'],
+        cat_levels_in_text=cat_origin,
+        cat_n_levels=cat_n,
+        impurity_var_importance=tree_state['impurity_var_importance'])
 
     # dependent variables
     dep_type = _get_dep_type(training_table_name, dependent_variable)
@@ -933,36 +941,44 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
 
     dependent_var_type = dep_type
     dependent_varname = dependent_variable
-    independent_var_types = [all_cols_types[c] for c in cat_features+con_features]
-    independent_varnames = cat_features + con_features
-    # independent_var_types = ','.join([all_cols_types[c] for c in cat_features+con_features])
-    # independent_varnames = ','.join(cat_features+con_features)
-
-    # cat_features = [quote_ident(c) for c in cat_features]
-    # con_features = [quote_ident(c) for c in con_features]
-    # cat_features = ','.join(cat_features)
-    # con_features = ','.join(con_features)
+    independent_var_types = [all_cols_types[c]
+        for c in cat_features+con_features]
+    independent_varnames = py_list_to_sql_string(
+        map(quote_literal, cat_features+con_features),
+        array_type='text', long_format=True)
 
     # List of keys in JSON summary column. NOTE that these names must be the
     # same as the corresponding variable names.
-    model_summary_fields = ['is_classification', 'source_table', 'id_col_name',
-                            'list_of_features', 'list_of_features_to_exclude',
-                            'dependent_varname', 'independent_varnames',
-                            'cat_features', 'con_features', 'grouping_cols',
-                            'num_groups', 'num_failed_groups',
-                            'total_rows_processed', 'total_rows_skipped',
-                            'dependent_var_levels', 'dependent_var_type',
-                            'independent_var_types', 'input_cp', 'n_folds',
-                            'null_proxy', 'num_all_groups', 'method',
-                            'model_table']
-    model_summary = _get_summary_dict(model_summary_fields, **locals())
+    model_summary_json_fields = [
+        'is_classification', 'id_col_name',
+        'cat_features', 'con_features',
+        'num_groups', 'num_failed_groups',
+        'total_rows_processed', 'total_rows_skipped',
+        'dependent_var_levels', 'dependent_var_type',
+        'independent_var_types', 'input_cp', 'n_folds',
+        'null_proxy', 'num_all_groups', 'method']
+    model_summary = _filter_locals_dict(model_summary_json_fields, **locals())
+    # List of columns in summary repo table. These are exepected to be common
+    # to all modules.
+    summary_cols_fields = ['source_table',
+                           'list_of_features',
+                           'list_of_features_to_exclude',
+                           'dependent_varname',
+                           'grouping_cols',
+                           'start_training_time',
+                           'end_training_time',
+                           'independent_varnames',
+                           'name',
+                           'description']
+    model_summary_cols = _filter_locals_dict(summary_cols_fields, **locals())
 
     model_data = tree_state['tree_state']
 
     model_writer = VersionedModelWriter(
-        schema_madlib, output_table_name, 'Decision Tree', 'bytea8',
-        model_repository_table, name, description)
-    model_writer.store_model(model_data, model_metadata, metrics, model_summary)
+        schema_madlib, 'bytea8', 'Decision Tree', output_table_name,
+        model_repository_table)
+    model_writer.store_model(model_data, model_attributes,
+                             model_summary_cols, model_summary)
 
 # ------------------------------------------------------------
 
@@ -1683,8 +1699,6 @@ def _create_summary_table(
             dependent_var_levels = ['false', 'true']
         else:
             dependent_var_levels = dep_list
-            # dependent_var_levels = '$__dep_list__${0}$__dep_list__$'.format(
-            #     ','.join(map(str, dep_list)))
         dependent_var_levels = py_list_to_sql_string(
             map(quote_literal, dependent_var_levels),
             array_type='text',
@@ -1696,14 +1710,9 @@ def _create_summary_table(
         map(quote_literal, indep_var_types),
         array_type='text',
         long_format=True)
-    # dep_levels_array_str = py_list_to_sql_string(map(quote_literal, dep_levels),
-    #                                                  'TEXT',
-    #                                                  long_format=True)
-    independent_varnames = cat_features+con_features
     independent_varnames = py_list_to_sql_string(
-        map(quote_literal, independent_varnames),
-        array_type='text',
-        long_format=True)
+        map(quote_literal, cat_features+con_features),
+        array_type='text', long_format=True)
     cat_features_array = py_list_to_sql_string(
         map(quote_literal, cat_features), array_type='text', long_format=True)
     con_features_array = py_list_to_sql_string(
@@ -1736,8 +1745,8 @@ def _create_summary_table(
                 '{list_of_features_to_exclude}'::text     AS list_of_features_to_exclude,
                 '{dependent_variable}'::text   AS dependent_varname,
                 {independent_varnames}         AS independent_varnames,
-                {cat_features_array}             AS cat_features,
-                {con_features_array}             AS con_features,
+                {cat_features_array}           AS cat_features,
+                {con_features_array}           AS con_features,
                 {grouping_cols_str}::text      AS grouping_cols,
                 {n_groups}::integer            AS num_all_groups,
                 {num_failed_groups}::integer   AS num_failed_groups,
@@ -1840,7 +1849,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
     _assert(
         columns_exist_in_table(
             model_summary,
-            ["grouping_cols", "id_col_name", "dependent_varname",
+            ["id_col_name", "dependent_varname",
              "cat_features", "con_features", "is_classification"],
             schema_madlib),
         "Decision tree error: Invalid model summary table ({0})".format(model_summary))

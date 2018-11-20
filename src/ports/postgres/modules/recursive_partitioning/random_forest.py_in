@@ -1168,7 +1168,9 @@ def _calculate_oob_error(schema_madlib, oob_prediction_table, oob_error_table,
 
 
 def _create_summary_table(**kwargs):
-    kwargs['features'] = ','.join(kwargs['cat_features'] + kwargs['con_features'])
+    kwargs['features'] = py_list_to_sql_string(
+        map(quote_literal, kwargs['cat_features']+kwargs['con_features']),
+        array_type='text', long_format=True)
     kwargs['dep_type'] = get_expr_type(kwargs['dependent_variable'],
                                        kwargs['training_table_name'])
     if kwargs['dep_list']:
@@ -1203,7 +1205,7 @@ def _create_summary_table(**kwargs):
                 '{output_table_name}'::text     AS model_table,
                 '{id_col_name}'::text           AS id_col_name,
                 '{dependent_variable}'::text    AS dependent_varname,
-                '{features}'::text              AS independent_varnames,
+                {features}                      AS independent_varnames,
                 '{cat_features_str}'::text      AS cat_features,
                 '{con_features_str}'::text      AS con_features,
                 {grouping_cols_str}::text       AS grouping_cols,
