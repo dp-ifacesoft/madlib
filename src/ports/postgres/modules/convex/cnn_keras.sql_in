@@ -51,6 +51,11 @@ RETURNS VOID AS $$
     from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadding2D, Activation
     from keras.optimizers import Adam, SGD
     from keras import backend as keras_backend
+    from keras.regularizers import l2 
+    from keras.layers import Input
+    from keras.applications.imagenet_utils import _obtain_input_shape
+    from keras.models import Model
+
     use_cpu_only=False
     if use_cpu_only:
         import os
@@ -62,81 +67,176 @@ RETURNS VOID AS $$
         sess = tf.Session(config=config)
         run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
 
-    n_classes = 11
+    n_classes = 10
 
-    def create_model_architecture(n_classes):
+    def create_model_architecture(n_classes,use_cpu_only):
         model = Sequential()
 
-        model.add(ZeroPadding2D((1, 1), input_shape=(224,224,3)))
-        model.add(Conv2D(64, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(64, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+#        model.add(ZeroPadding2D((1, 1), input_shape=(224,224,3)))
+#        model.add(Conv2D(64, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(64, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+#
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(128, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(128, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+#
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(256, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(256, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(256, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+#
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(512, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(512, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(512, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+#
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(512, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(512, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(ZeroPadding2D((1, 1)))
+#        model.add(Conv2D(512, (3, 3)))
+#        model.add(Activation('relu'))
+#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+#
+#        model.add(Flatten())
+#        model.add(Dense(4096))
+#        model.add(Activation('relu'))
+#        model.add(Dropout(0.5))
+#        model.add(Dense(4096))
+#        model.add(Activation('relu'))
+#        model.add(Dropout(0.5))
+#        model.add(Dense(n_classes))
+#        model.add(Activation('softmax'))
 
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(128, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(128, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(256, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(256, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(256, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+        # Determine proper input shape
+        input_shape = (224,224,3)
+        input_shape = _obtain_input_shape(input_shape,
+                                      default_size=224,
+                                      min_size=48,
+                                      data_format=keras_backend.image_data_format(),
+                                      require_flatten=True)
 
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+        inputs = Input(shape=input_shape)
+ 
+        # Block 1
+        x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block1_conv1')(inputs)
+    
+        x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block1_conv2')(x)
+    
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block1_pool", padding='valid')(x)
+    
+        # Block 2
+        x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block2_conv1')(x)
+    
+        x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block2_conv2')(x)
+    
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block2_pool", padding='valid')(x)
+    
+        # Block 3
+        x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block3_conv1')(x)
+    
+        x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block3_conv2')(x)
+    
+        x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block3_conv3')(x)
+    
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block3_pool", padding='valid')(x)
+    
+        # Block 4
+        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block4_conv1')(x)
+    
+        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block4_conv2')(x)
+    
+        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block4_conv3')(x)
+    
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block4_pool", padding='valid')(x)
+    
+        # Block 5
+        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block5_conv1')(x)
+    
+        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block5_conv2')(x)
+    
+        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
+                   kernel_regularizer=l2(0.0002),
+                   activation='relu', name='block5_conv3')(x)
+    
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block5_pool", padding='valid')(x)
 
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(ZeroPadding2D((1, 1)))
-        model.add(Conv2D(512, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+        # Classification block
+        x = Flatten(name='flatten')(x)
+        x = Dense(4096, activation='relu', name='fc1')(x)
+        x = Dropout(0.5, name='drop_fc1')(x)
 
-        model.add(Flatten())
-        model.add(Dense(4096))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(4096))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(n_classes))
-        model.add(Activation('softmax'))
+        x = Dense(4096, activation='relu', name='fc2')(x)
+        x = Dropout(0.5, name='drop_fc2')(x)
+        
+        x = Dense(n_classes, activation='softmax', name="predictions")(x)
+
+        model = Model(inputs, x, name='vgg16-places365')
+
 
 ##########
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
         # model.summary()
 
-        parallel_model = keras.utils.multi_gpu_model(model, gpus=8)
+        parallel_model = model
 
-        parallel_model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
+        if use_cpu_only:
+            model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
+        else:
+            parallel_model = keras.utils.multi_gpu_model(model, gpus=8)
+            parallel_model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
 
         return {"model" : model, "parallel_model" : parallel_model}
 
-    model_template = create_model_architecture(n_classes)
+    model_template = create_model_architecture(n_classes,use_cpu_only)
     model = model_template["model"]
     parallel_model = model_template["parallel_model"]
 
@@ -174,15 +274,18 @@ RETURNS VOID AS $$
     plpy.info("time to evaluate model = {0}".format(eval_time-eval_start))
 
     agg_scores = []
+    model_arch = model.to_json()
     sql = """
         SELECT MADLIB_SCHEMA.cnn_keras_step(
-            x::SMALLINT[],
+            x::REAL[],
             y::SMALLINT[],
             $MAD${0}$MAD$::text,
             $1
         ) AS keras_model
         FROM {1}
-        """.format(model.to_json(), source_table)
+        """.format(model_arch, source_table)
+
+    plpy.info("Model arch size: {}KB".format(len(model_arch)/1024))
 
     update_plan = plpy.prepare(sql, ["bytea"])
     plpy.info("model arch is in place")
@@ -195,7 +298,7 @@ RETURNS VOID AS $$
         model_shapes.append(a.shape)
     endtime = time.time()
     plpy.info('String dump time : {0} {1}'.format(endtime-start_time, len(filter(None,model_string.split('splitter')))))
-    plpy.info(len(model_string))
+    plpy.info("Model state size: {}MB".format(len(model_string)/1024/1024))
     start_time = time.time()
     for i in range(N_ITERATIONS):
         iter_start_time = time.time()
@@ -207,7 +310,7 @@ RETURNS VOID AS $$
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         plpy.info('Time elapsed since start of iter 0: {1}'.format(i, iter_endtime-start_time))
-        model_template = create_model_architecture(n_classes)
+        model_template = create_model_architecture(n_classes,use_cpu_only)
         model_eval = model_template["parallel_model"]
         weightsList = []
         j = 0
@@ -234,7 +337,7 @@ $$ language plpythonu;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
     state               BYTEA,
-    ind_var             SMALLINT[],
+    ind_var             REAL[],
     dep_var             SMALLINT[],
     architecture        TEXT,
     previous_state      BYTEA
@@ -287,28 +390,34 @@ after_deser = time.time()
 keras_model.set_weights(weightsList)
 prep_1 = time.time()  # set weights
 try:
+    if use_cpu_only:
+        raise(ValueError)
     parallel_model = keras.utils.multi_gpu_model(keras_model, gpus=8)
-    "Training using GPU's"
+    plpy.info("Training using GPU's")
 except ValueError:
     # This segment doesn't have GPU's enabled
     parallel_model = keras_model
-    "Training using CPU's only"
+    plpy.info("Training using CPU's only")
 
 prep_2 = time.time()  # multi_gpu_model
 # We must run model.compile again, after obtaining the architecutre.
-parallel_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-    loss='categorical_crossentropy',
-    metrics=['accuracy'],options=run_options)
+if use_cpu_only:
+    keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+    loss='categorical_crossentropy', metrics=['accuracy'])
+else:
+    parallel_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+        loss='categorical_crossentropy',
+        metrics=['accuracy'],options=run_options)
 prep_3 = time.time() # compile()
 if ind_var == None:
    return None
 #plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
-x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3).astype("float16")
+x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255.0
 
 y_train = np.array(dep_var)
-n_classes = 11
+n_classes = 10
 prep_4 = time.time() # convert x,y input to numpy arrays
 y_train = keras.utils.to_categorical(y_train,n_classes)
 #plpy.info("y train shape is {0}".format(y_train.shape))
@@ -382,12 +491,12 @@ $$
 LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
-DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(double precision[],
-                                                      double precision[],
-                                                      text,
-                                                      bytea);
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(REAL[],
+                                                      SMALLINT[],
+                                                      TEXT,
+                                                      BYTEA);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
-    /* ind_var */             SMALLINT[],
+    /* ind_var */             REAL[],
     /* dep_var */             SMALLINT[],
     /* architecture */        TEXT,
     /* previous_state */      BYTEA
