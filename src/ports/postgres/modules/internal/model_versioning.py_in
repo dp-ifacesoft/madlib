@@ -91,10 +91,9 @@ SUMMARY_REPO_COLS_TO_QUOTE = [
 def get_summary_tablename(tbl):
     return add_postfix(tbl, '_summary') if tbl else None
 
-# both predict and train have very specific checks. The validate functions in
-# this class are sometimes confusing because all these checks are combined into
-# just one function.
-# add tests for validator
+# TODO both predict and train have very specific checks. The validate
+# functions in this class are sometimes confusing because all these checks are combined into
+# just one function. add tests for validator
 class VersionedModelTableValidator(object):
     def __init__(self, out_table=None, model_repository_table=None,
                  model_id=None):
@@ -122,13 +121,6 @@ class VersionedModelTableValidator(object):
         # If a model repo table is specified, make validations
         # for the model repo table scenario.
         # move the view checks to predict validate
-        is_model_repo_a_view = table_exists(
-            self.model_repo_table, relkind=VIEWS_ONLY)
-        is_model_repo_summary_a_view = table_exists(
-            self.model_repo_table_summary, relkind=VIEWS_ONLY)
-        if is_model_repo_a_view or is_model_repo_summary_a_view:
-            plpy.error("Model Versioning Error: The repo and summary tables " \
-                "are expected to be tables and not views.")
         model_repo_table_exists = table_exists(self.model_repo_table)
         model_repo_table_summary_exists = table_exists(
             self.model_repo_table_summary)
@@ -163,8 +155,16 @@ class VersionedModelTableValidator(object):
             # these two statements are confusing
             self.model_repo_table = self.out_table
             self.model_repo_table_summary = self.out_table_summary
+
             # Assert that model_repo_table is NOT a view.
-            # Validate the repository tables.
+            is_model_repo_a_view = table_exists(self.model_repo_table,
+                                                relkind=VIEWS_ONLY)
+            is_model_repo_summary_a_view = table_exists(
+                self.model_repo_table_summary, relkind=VIEWS_ONLY)
+            if is_model_repo_a_view or is_model_repo_summary_a_view:
+                plpy.error("Model Versioning Error: The repo and summary tables " \
+                           "are expected to be tables and not views.")
+
             self._validate_model_repo_tables()
             if not self.repo_tables_exist:
                 plpy.error("Model Versioning Error: The repository tables "\
