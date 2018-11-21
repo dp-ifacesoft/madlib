@@ -31,6 +31,7 @@ from utilities.utilities import ONLY_ARRAY
 from utilities.utilities import unique_string
 from utilities.validate_args import get_cols
 from utilities.validate_args import quote_ident
+from internal.db_utils import quote_dict_values
 from utilities.validate_args import table_exists
 from utilities.validate_args import TABLES_ONLY, VIEWS_ONLY
 from collections import OrderedDict
@@ -419,8 +420,6 @@ class VersionedModelViewCreator(object):
                     self.model_data_type))
             select_clause += ', ' + model_data_str.format(
                 schema_madlib=self.schema_madlib)
-        # TODO: Summary repo table has columns we want in the view. Add them,
-        # we are currently only creating columns from the summary JSON column.
         elif table_name == self.model_repo_summary_table:
             select_clause += ', ' + ', '.join(COLS_FOR_VIEW_FROM_SUMMARY_REPO)
 
@@ -574,25 +573,24 @@ class VersionedModelViewCreator(object):
                 is_coltype_a_list: is a boolean flag indicating if the type is
                     an array or not.
         """
-        # Map types in python to types in SQL. Couple points to note:
-        # 1. strings in JSON when read out in python is of type unicode.
-        # 2. types.NoneType is to capture NULL in SQL. We will thus end up
-        #    casting any column with NULL value to type text.
-        # TODO move down
-        python_to_sql_type_map = {
-            float:'double precision',
-            int:'int',
-            unicode:'text',
-            types.NoneType:'text',
-            bool:'boolean',
-        }
 
         def get_type(col_name, col_value):
             """
-                Given JSON key-value pair, return back the column to create
-                in the view, along with its type. key represents the column
-                name, and the type of value in python is mapped to a sql type.
-            """
+                    Given JSON key-value pair, return back the column to create
+                    in the view, along with its type. key represents the column
+                    name, and the type of value in python is mapped to a sql type.
+                """
+            # Map types in python to types in SQL. Couple points to note:
+            # 1. strings in JSON when read out in python is of type unicode.
+            # 2. types.NoneType is to capture NULL in SQL. We will thus end up
+            #    casting any column with NULL value to type text.
+            python_to_sql_type_map = {
+                float:'double precision',
+                int:'int',
+                unicode:'text',
+                types.NoneType:'text',
+                bool:'boolean',
+            }
             value_type = type(col_value)
             type_suffix = ''
             is_list = False
@@ -614,7 +612,7 @@ class VersionedModelViewCreator(object):
                             'is_list': is_list}
                 else:
                     plpy.error("Unknown type for json key-value ({0}:{1})".
-                        format(col_name, value_type))
+                               format(col_name, value_type))
 
         view_cols_types = {col_name:get_type(col_name, col_value)
             for col_name, col_value in json.loads(json_from_table).items()}
@@ -650,6 +648,8 @@ class VersionedModelWriter(object):
         self.model_view = model_view
         self.model_view_summary = get_summary_tablename(model_view)
         self.model_type = model_type
+        # TODO store model_data_type in summary so that the helper sql function
+        # to create the view can pass along this value.
         self.model_data_type = model_data_type
         if model_repository_table:
             self.model_repo_table = model_repository_table
@@ -690,7 +690,17 @@ class VersionedModelWriter(object):
 
     def store_model(self, model_data, model_attributes_json_dict,
                     repo_summary_cols_dict, model_summary_json_dict):
-        # TODO should we validate if model_data's type == self.model_data_type
+        # We need a unique model id for each model train call (for every
+        # such call, a single row is inserted into the summary table,
+        # but  in case of grouping, multiple rows could be inserted into the
+        # model repo table with the same model id).
+        # We therefore first insert into the summary table that has a serial
+        # model_id column, along with an internal MADlib model id that is
+        # created by us and guaranteed to be unique. We then use this internal
+        # MADlib model id to get the serial model_id value. This serial value
+        # is written into the model repo table. Note that model_id column in the
+        # repo table is NOT serial.
+
         model_id = self._store_model_table_summary(
             repo_summary_cols_dict, model_summary_json_dict)
         self._store_model_table(
@@ -704,60 +714,61 @@ class VersionedModelWriter(object):
                                                  validate_tables=False)
         view_creator.create_view()
 
-    def _get_quoted_str_for_text_summary_cols(self, input_dict):
-        for key in SUMMARY_REPO_COLS_TO_QUOTE:
-            input_dict[key] = '{0}{1}{0}'.format('$_madlib_$', input_dict[key])\
-                if input_dict[key] else "NULL"
+    MODEL_VER_DELIMITER = '$model_ver$'
 
-    # TODO add quote ident
+
     def _store_model_table_summary(self, repo_summary_cols_dict,
                                    model_summary_json):
-        model_summary_json = self._to_json(model_summary_json)
-        version = madlib_version(self.schema_madlib)
-        madlib_internal_id = unique_string(prefix_has_temp=False)
-        # Get values of other columns in summary repo table from
-        # repo_summary_cols_dict
-        start_time = repo_summary_cols_dict['start_training_time'] \
-            if repo_summary_cols_dict['start_training_time'] else 'NULL'
-        end_time = repo_summary_cols_dict['end_training_time'] \
-            if repo_summary_cols_dict['end_training_time'] else 'NULL'
-        self._get_quoted_str_for_text_summary_cols(repo_summary_cols_dict)
-
-        model_table = self.model_view
-        model_repository = self.model_repo_table
+        # Quote all the summary table column values. Add keys to the dict that
+        # were not passed in.
+        repo_summary_cols_dict['model_type'] = self.model_type
+        repo_summary_cols_dict['summary'] = self._to_json(model_summary_json)
+        repo_summary_cols_dict['model_table'] = self.model_view
+        repo_summary_cols_dict['model_repository'] = self.model_repo_table
+        repo_summary_cols_dict['madlib_version'] = madlib_version(
+            self.schema_madlib)
+        repo_summary_cols_dict['__madlib_internal_id__'] = unique_string(prefix_has_temp=False)
+        # Do not quote list type columns.
+        quote_dict_values(repo_summary_cols_dict,
+                          ['model_id', 'independent_varnames'],
+                          self.MODEL_VER_DELIMITER)
 
         # For now the calling function is expected to handle
         # special characters for all text columns in the summary repo table.
+        # do not insert model_id value because it is serial
         summary_table_cols = ', '.join(['{0}'.format(colname)
             for colname in MODEL_TABLE_SUMMARY_COLS if colname != 'model_id'])
         repo_summary_cols_dict.update(locals())
         sql = """
             INSERT INTO {self.model_repo_table_summary} ({summary_table_cols})
-            VALUES ('{self.model_type}',
-                    $_madlib_${model_summary_json}$_madlib_$,
-                    '{start_time}', '{end_time}',
-                    $_madlib_${source_table}$_madlib_$,
-                    $_madlib_${model_table}$_madlib_$,
-                    $_madlib_${model_repository}$_madlib_$,
+            VALUES ({model_type},
+                    {summary},
+                    {start_training_time},
+                    {end_training_time},
+                    {source_table},
+                    {model_table},
+                    {model_repository},
                     {dependent_varname},
                     {list_of_features},
                     {list_of_features_to_exclude},
                     {independent_varnames},
-                    {grouping_cols}::TEXT,
+                    {grouping_cols},
                     {name},
                     {description},
-                    '{version}',
-                    '{madlib_internal_id}')
-        """.format(**repo_summary_cols_dict)
+                    {madlib_version},
+                    {__madlib_internal_id__})
+        """.format(MODEL_VER_DELIMITER=self.MODEL_VER_DELIMITER,
+                   **repo_summary_cols_dict)
         plpy.execute(sql)
 
-        #add comment here to explain why we need to use internal id
         model_id = plpy.execute("""
                 SELECT model_id
                 FROM {model_repo_table_summary}
-                WHERE __madlib_internal_id__='{madlib_internal_id}'
-            """.format(model_repo_table_summary=self.model_repo_table_summary,
-                       madlib_internal_id=madlib_internal_id))[0]['model_id']
+                WHERE __madlib_internal_id__={madlib_internal_id}
+            """.format(
+            model_repo_table_summary=self.model_repo_table_summary,
+            madlib_internal_id=repo_summary_cols_dict['__madlib_internal_id__'])
+        )[0]['model_id']
         return model_id
 
     def _store_model_table(self, model_id, model_data, model_attributes):
@@ -778,11 +789,10 @@ class VersionedModelWriter(object):
         sql = """INSERT INTO {self.model_repo_table} ({model_table_cols})
                  VALUES ('{model_id}', NULL, '{self.model_type}',
                          {model_data_query},
-                         $_madlib_${model_attributes}$_madlib_$)
+                         {self.MODEL_VER_DELIMITER}{model_attributes}{self.MODEL_VER_DELIMITER})
         """.format(**locals())
         plpy.execute(sql)
 
-    # TODO: Can we directly insert dicts to table instead of converting to json?
     # TODO: can we use sql's to_json
     def _to_json(self, json_dict):
         if type(json_dict) == dict:

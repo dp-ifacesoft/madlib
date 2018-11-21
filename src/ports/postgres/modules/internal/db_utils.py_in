@@ -63,7 +63,7 @@ def get_one_hot_encoded_expr(col_name, col_levels):
 # ------------------------------------------------------------------------------
 
 
-def quote_literal(input_str):
+def quote_literal(input_str, delimiter=QUOTE_DELIMITER):
     """ Return the given string suitably quoted to be used as a string literal
         in an SQL statement string.
 
@@ -76,7 +76,7 @@ def quote_literal(input_str):
     except AttributeError:
         # plpy.quote_literal is not supported, we work around by returning
         # dollar-quoted string with obscure tag
-        return "{qd}{input_str}{qd}".format(qd=QUOTE_DELIMITER,
+        return "{qd}{input_str}{qd}".format(qd=delimiter,
                                             input_str=input_str)
 # ------------------------------------------------------------------------------
 
@@ -88,3 +88,11 @@ def is_col_1d_array(source_table, col_name):
     """.format(col_name, source_table)
     result = plpy.execute(query)
     return result[0]["n_y"]
+
+# ------------------------------------------------------------------------------
+def quote_dict_values(input_dict, exclude_keys, delimiter):
+    for key in input_dict:
+        if key in exclude_keys:
+            continue
+        input_dict[key] = quote_literal(input_dict[key], delimiter)\
+            if input_dict[key] else "NULL"

@@ -65,7 +65,7 @@ SELECT tree_train('dt_golf'::text,         -- source table
                          'cp=0.01'          -- cost-complexity pruning parameter
                          );
 
-SELECT _print_decision_tree(tree) from train_output;
+SELECT _print_decision_tree(model_data) from train_output;
 SELECT tree_display('train_output', False);
 SELECT get_var_importance('train_output', 'output_table');
 -------------------------------------------------------------------------
