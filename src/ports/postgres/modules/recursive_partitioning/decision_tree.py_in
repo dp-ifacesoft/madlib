@@ -958,7 +958,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         'independent_var_types', 'input_cp', 'n_folds',
         'null_proxy', 'num_all_groups', 'method']
     model_summary = _filter_locals_dict(model_summary_json_fields, **locals())
-    # List of columns in summary repo table. These are exepected to be common
+    # List of columns in summary repo table. These are expected to be common
     # to all modules.
     summary_cols_fields = ['source_table',
                            'list_of_features',

@@ -90,6 +90,10 @@ SUMMARY_REPO_COLS_TO_QUOTE = [
 def get_summary_tablename(tbl):
     return add_postfix(tbl, '_summary') if tbl else None
 
+# both predict and train have very specific checks. The validate functions in
+# this class are sometimes confusing because all these checks are combined into
+# just one function.
+# add tests for validator
 class VersionedModelTableValidator(object):
     def __init__(self, out_table=None, model_repository_table=None,
                  model_id=None):
@@ -116,6 +120,7 @@ class VersionedModelTableValidator(object):
     def _validate_model_repo_tables(self):
         # If a model repo table is specified, make validations
         # for the model repo table scenario.
+        # move the view checks to predict validate
         is_model_repo_a_view = table_exists(
             self.model_repo_table, relkind=VIEWS_ONLY)
         is_model_repo_summary_a_view = table_exists(
@@ -152,7 +157,9 @@ class VersionedModelTableValidator(object):
     def validate_model_tables_for_predict(self):
         # For reader, we will assume that only out_table is set. It is either
         # set to a model table, or the model repository table.
+
         if self.model_id:
+            # these two statements are confusing
             self.model_repo_table = self.out_table
             self.model_repo_table_summary = self.out_table_summary
             # Assert that model_repo_table is NOT a view.
@@ -185,6 +192,7 @@ class VersionedModelTableValidator(object):
         exception. If model_repository_table is not specified, then check
         for the validity of the out_table.
         """
+        # refactor this
         if self.model_repo_table:
             self._validate_model_repo_tables()
             # Validate self.out_table. This could either be intended to be a
@@ -210,10 +218,11 @@ class VersionedModelTableValidator(object):
             # a table named self.out_table/self.out_table_summary can exist.
             _assert(not table_exists(
                     self.out_table, only_first_schema=True),
-                "Error: Output table {} already exists.".format(self.out_table))
+                "Error: Output table {0} already exists.".format(
+                    self.out_table))
             _assert(not table_exists(
                     self.out_table_summary, only_first_schema=True),
-                "Error: Output summary table {} already exists.".format(
+                "Error: Output summary table {0} already exists.".format(
                     self.out_table_summary))
 
 class VersionedModelViewCreator(object):
@@ -288,16 +297,16 @@ class VersionedModelViewCreator(object):
                     in the summary JSON column in model repository summary table.
         """
         # Get the necessary JSONs from model repository and summary tables.
-        model_repo_jsons, model_summary_json = self._get_model_tables_jsons()
+        model_attrs_json, model_summary_json = self._get_model_tables_jsons()
         # Find the types of various columns to create from each JSON blob.
         # Override the types of automatically found column types if applicable.
         summary_colstypes_dict = self._get_view_cols_types_for_json(
             model_summary_json['summary'], summary_colstypes_dict)
         model_attributes_types_dict = self._get_view_cols_types_for_json(
-            model_repo_jsons['attributes'], model_attributes_types_dict)
+            model_attrs_json['attributes'], model_attributes_types_dict)
 
         # Create view for the model table. Necessary data could be stored in
-        # multiple JSON columns such as model_metadata and metrics. We also
+        # multiple JSON columns such as model_metadata and attributes. We also
         # need to include model_data column in the view, which is handled
         # in _gen_create_view_sql.
 
@@ -569,6 +578,7 @@ class VersionedModelViewCreator(object):
         # 1. strings in JSON when read out in python is of type unicode.
         # 2. types.NoneType is to capture NULL in SQL. We will thus end up
         #    casting any column with NULL value to type text.
+        # TODO move down
         python_to_sql_type_map = {
             float:'double precision',
             int:'int',
@@ -615,12 +625,12 @@ class VersionedModelViewCreator(object):
             Return back the JSON columns required to create views from both
             model_repo table and model_repo_summary.
         """
-        model_repo_jsons = plpy.execute("""
+        model_attrs_json = plpy.execute("""
                 SELECT attributes
                 FROM {0}
                 WHERE model_id={1}
             """.format(self.model_repo_table, self.model_id))
-        if not model_repo_jsons:
+        if not model_attrs_json:
             plpy.error("Invalid model id ({0}) provided.".format(self.model_id))
 
         model_summary_json = plpy.execute("""
@@ -631,7 +641,7 @@ class VersionedModelViewCreator(object):
         if not model_summary_json:
             plpy.error("Missing summary table for model_id {0}!".format(self.model_id))
 
-        return model_repo_jsons[0], model_summary_json[0]
+        return model_attrs_json[0], model_summary_json[0]
 
 class VersionedModelWriter(object):
     def __init__(self, schema_madlib, model_data_type, model_type, model_view,
@@ -725,7 +735,7 @@ class VersionedModelWriter(object):
             INSERT INTO {self.model_repo_table_summary} ({summary_table_cols})
             VALUES ('{self.model_type}',
                     $_madlib_${model_summary_json}$_madlib_$,
-                    '{start_time}'::timestamp, '{end_time}'::timestamp,
+                    '{start_time}', '{end_time}',
                     $_madlib_${source_table}$_madlib_$,
                     $_madlib_${model_table}$_madlib_$,
                     $_madlib_${model_repository}$_madlib_$,
@@ -740,6 +750,8 @@ class VersionedModelWriter(object):
                     '{madlib_internal_id}')
         """.format(**repo_summary_cols_dict)
         plpy.execute(sql)
+
+        #add comment here to explain why we need to use internal id
         model_id = plpy.execute("""
                 SELECT model_id
                 FROM {model_repo_table_summary}
