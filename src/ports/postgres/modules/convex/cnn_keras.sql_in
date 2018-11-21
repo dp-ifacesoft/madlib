@@ -415,15 +415,14 @@ if ind_var == None:
 x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255.0
-
 y_train = np.array(dep_var)
 n_classes = 10
-prep_4 = time.time() # convert x,y input to numpy arrays
+mid = time.time() # convert x,y input to numpy arrays
 y_train = keras.utils.to_categorical(y_train,n_classes)
-#plpy.info("y train shape is {0}".format(y_train.shape))
-mid = time.time()  # to categorical
 
-plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy arrays {}, to_categorical() {}".format(prep_1 - after_deser, prep_2 - prep_1, prep_3-prep_2, prep_4-prep_3, mid-prep_4))
+#plpy.info("y train shape is {0}".format(y_train.shape))
+
+plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy arrays {}, to_categorical() {}".format(prep_1 - after_deser, prep_2 - prep_1, prep_3-prep_2, mid-prep_3))
 
 plpy.info("will try to fit now")
 parallel_model.fit(x_train, y_train,
@@ -455,6 +454,9 @@ $$
 import json
 import numpy as np
 
+plpy.info("Starting merge")
+merge_start = time.time()
+
 if not state1 or not state2:
     return state1 or state2
 
@@ -469,6 +471,9 @@ for a in merged_weights:
     model_string += a.tostring()
     model_string += "splitter"
 
+merge_finish = time.time()
+plpy.info("cnn_keras_merge time = ".format(merge_finish-merge_start))
+
 return model_string
 $$
 LANGUAGE plpythonu
@@ -480,12 +485,18 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_final(
 $$
 import json
 import numpy as np
-normalized_weights=[(a/1).tolist() for a in weights1]
+plpy.info("Starting final function")
+final_start = time.time()
+
+weights = [np.array(a) for a in filter(None,state.split('splitter'))]
+normalized_weights=[(a/1).tolist() for a in weights]
 model_string = ''
 for a in normalized_weights:
     model_string += a.tostring()
     model_string += "splitter"
 
+final_finish = time.time()
+plpy.info("cnn_keras_finale time = ".format(final_finish-final_start))
 return model_string
 $$
 LANGUAGE plpythonu
