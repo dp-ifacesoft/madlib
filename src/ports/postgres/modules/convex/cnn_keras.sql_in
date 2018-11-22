@@ -248,28 +248,28 @@ RETURNS VOID AS $$
     plpy.info('finished running select query')
 
 
-    all_x_train = np.ndarray((0,150528))
-    all_y_train = np.ndarray((0))
+    all_x_test = np.ndarray((0,150528))
+    all_y_test = np.ndarray((0))
     for i in range(len(testData)):
-        x_train = np.asarray((testData[i]['x'],))
-        y_train = np.asarray((testData[i]['y'],))
+        x_test = np.asarray((testData[i]['x'],))
+        y_test = np.asarray((testData[i]['y'],))
         #plpy.info('i : {0}'.format(i))
-        #plpy.info('X shape : {0}'.format(x_train.shape))
-        #plpy.info('Y shape : {0}'.format(y_train.shape))
-        all_x_train=np.concatenate((all_x_train, x_train))
-        all_y_train=np.concatenate((all_y_train, y_train))
+        #plpy.info('X shape : {0}'.format(x_test.shape))
+        #plpy.info('Y shape : {0}'.format(y_test.shape))
+        all_x_test=np.concatenate((all_x_test, x_test))
+        all_y_test=np.concatenate((all_y_test, y_test))
 
-    num_train_examples = all_x_train.shape[0]
-    all_x_train = all_x_train.reshape(num_train_examples, 224,224,3)
-    all_x_train = all_x_train.astype('float32')
-    all_y_train = all_y_train.reshape(num_train_examples)
-    plpy.info('X shape : {0}'.format(all_x_train.shape))
-    plpy.info('Y shape : {0}'.format(all_y_train.shape))
-    all_x_train /= 255.0
-    all_y_train = keras.utils.to_categorical(all_y_train,n_classes)
+    num_test_examples = all_x_test.shape[0]
+    all_x_test = all_x_test.reshape(num_test_examples, 224,224,3)
+    all_x_test = all_x_test.astype('float32')
+    all_y_test = all_y_test.reshape(num_test_examples)
+    plpy.info('X shape : {0}'.format(all_x_test.shape))
+    plpy.info('Y shape : {0}'.format(all_y_test.shape))
+    all_x_test /= 255.0
+    all_y_test = keras.utils.to_categorical(all_y_test,n_classes)
 
     eval_start = time.time()
-    parallel_model.evaluate(all_x_train, all_y_train, verbose=0)
+    parallel_model.evaluate(all_x_test, all_y_test, verbose=0)
     eval_time = time.time()
     plpy.info("time to evaluate model = {0}".format(eval_time-eval_start))
 
@@ -309,17 +309,15 @@ RETURNS VOID AS $$
             plpy.error('plpy exception')
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
-        plpy.info('Time elapsed since start of iter 0: {1}'.format(i, iter_endtime-start_time))
-        model_template = create_model_architecture(n_classes,use_cpu_only)
         model_eval = model_template["parallel_model"]
         weightsList = []
         j = 0
         for a in filter(None,model_string.split('splitter')):
-            weightsList.append(np.fromstring(a).reshape(model_shapes[j]))
+            weightsList.append(np.fromstring(a,dtype='float32').reshape(model_shapes[j]))
             j+=1
         model_eval.set_weights(weightsList)
-        agg_score = model_eval.evaluate(all_x_train, all_y_train, verbose=0)[1]
-        #agg_score = model_eval.evaluate(x_train, y_train, verbose=0)[1]
+        agg_score = model_eval.evaluate(all_x_test, all_y_test, verbose=0)[1]
+        #agg_score = model_eval.evaluate(x_test, y_test, verbose=0)[1]
         plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
         agg_scores.append(agg_score)
 
@@ -329,7 +327,7 @@ RETURNS VOID AS $$
         SELECT $1 AS keras_model,
         $2 as accuracy_history
         """.format(model_table), ["text", "DOUBLE PRECISION[]"])
-    plpy.execute(plan, [model_weights, agg_scores])
+    plpy.execute(plan, [weightsList, agg_scores])
 
 
 $$ language plpythonu;
@@ -355,6 +353,17 @@ from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadd
 from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
 from keras import backend as keras_backend
+
+def deserialize(state,model_shapes):
+    weightsList = []
+    j = 0
+    for a in filter(None,state.split('splitter')):
+        arr = np.fromstring(a, dtype=np.float32)
+        weightsList.append(arr.reshape(model_shapes[j]))
+        j+=1
+
+    return weightsList
+
 real_start = time.time()
 plpy.info('importing tensorflow from segment')
 use_cpu_only=False
@@ -380,12 +389,7 @@ for a in keras_model.get_weights():
 
 plpy.info("Transition STARTED")
 start = time.time()
-weightsList = []
-j = 0
-for a in filter(None,serialized_state.split('splitter')):
-    arr = np.fromstring(a, dtype=np.float32)
-    weightsList.append(arr.reshape(model_shapes[j]))
-    j+=1
+weightsList = deserialize(serialized_state,model_shapes)
 after_deser = time.time()
 keras_model.set_weights(weightsList)
 prep_1 = time.time()  # set weights
@@ -422,7 +426,7 @@ y_train = keras.utils.to_categorical(y_train,n_classes)
 
 #plpy.info("y train shape is {0}".format(y_train.shape))
 
-plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy arrays {}, to_categorical() {}".format(prep_1 - after_deser, prep_2 - prep_1, prep_3-prep_2, mid-prep_3))
+plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy arrays {}".format(prep_1 - after_deser, prep_2 - prep_1, prep_3-prep_2, mid-prep_3))
 
 plpy.info("will try to fit now")
 parallel_model.fit(x_train, y_train,
@@ -453,19 +457,19 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_merge(
 $$
 import json
 import numpy as np
+import time
 
 plpy.info("Starting merge")
 merge_start = time.time()
 
 if not state1 or not state2:
+    plpy.info("Returning from merge early (only 1 state passed)")
     return state1 or state2
 
-weights1 = [np.array(a) for a in filter(None,state1.split('splitter'))]
-weights2 = [np.array(a) for a in filter(None,state2.split('splitter'))]
-## This is a simple merge where we assume each segment has *equal* number of
-## rows. If it is not the case, we must do a weighted avg, and should store
-## the number of rows info somewhere.
-merged_weights = [(a+b).tolist() for a, b in zip(weights1, weights2)]
+weights1 = [np.fromstring(a,dtype='float32') for a in filter(None,state1.split('splitter'))]
+weights2 = [np.fromstring(a,dtype='float32') for a in filter(None,state2.split('splitter'))]
+
+merged_weights = [a+b for a, b in zip(weights1, weights2)]
 model_string = ''
 for a in merged_weights:
     model_string += a.tostring()
@@ -484,12 +488,13 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_final(
 ) RETURNS BYTEA AS
 $$
 import json
+import time
 import numpy as np
 plpy.info("Starting final function")
 final_start = time.time()
 
-weights = [np.array(a) for a in filter(None,state.split('splitter'))]
-normalized_weights=[(a/1).tolist() for a in weights]
+weights = [np.fromstring(a,dtype='float32') for a in filter(None,state.split('splitter'))]
+normalized_weights=[a/1 for a in weights]
 model_string = ''
 for a in normalized_weights:
     model_string += a.tostring()
