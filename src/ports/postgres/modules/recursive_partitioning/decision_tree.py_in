@@ -919,13 +919,6 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     depth = (tree_state['pruned_depth'] if 'pruned_depth' in tree_state
              else tree_state['tree_depth'])
 
-    model_attributes = dict(
-        tree_depth=depth,
-        pruning_cp=tree_state['cp'],
-        cat_levels_in_text=cat_origin,
-        cat_n_levels=cat_n,
-        impurity_var_importance=tree_state['impurity_var_importance'])
-
     # dependent variables
     dep_type = _get_dep_type(training_table_name, dependent_variable)
     if dep_list:
@@ -960,6 +953,8 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     model_summary = _filter_locals_dict(model_summary_json_fields, **locals())
     # List of columns in summary repo table. These are expected to be common
     # to all modules.
+    model_type = 'Decision Tree'
+    model_data_type = 'bytea8'
     summary_cols_fields = ['source_table',
                            'list_of_features',
                            'list_of_features_to_exclude',
@@ -969,14 +964,21 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
                            'end_training_time',
                            'independent_varnames',
                            'name',
-                           'description']
+                           'description',
+                           'model_type',
+                           'model_data_type']
     model_summary_cols = _filter_locals_dict(summary_cols_fields, **locals())
 
     model_data = tree_state['tree_state']
+    model_attributes = dict(
+        tree_depth=depth,
+        pruning_cp=tree_state['cp'],
+        cat_levels_in_text=cat_origin,
+        cat_n_levels=cat_n,
+        impurity_var_importance=tree_state['impurity_var_importance'])
 
     model_writer = VersionedModelWriter(
-        schema_madlib, 'bytea8', 'Decision Tree', output_table_name,
-        model_repository_table)
+        schema_madlib, output_table_name, model_repository_table)
     model_writer.store_model(model_data, model_attributes,
                              model_summary_cols, model_summary)
 
@@ -1836,8 +1838,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
                       use_existing_tables)
     # Set validate_tables=False since it is already validated in
     # _validate_predict()
-    model_reader = VersionedModelReader(schema_madlib, model, 'bytea8',
-                                        model_id)
+    model_reader = VersionedModelReader(schema_madlib, model, model_id)
     model, model_summary = model_reader.get_model_tables_for_prediction()
     # Check if the model we are going to use is valid or not.
     _assert(

@@ -672,13 +672,10 @@ class VersionedModelViewCreator(object):
         return model_attrs_json[0], model_summary_json[0]
 
 class VersionedModelWriter(object):
-    def __init__(self, schema_madlib, model_data_type, model_type, model_view,
-                 model_repository_table):
+    def __init__(self, schema_madlib, model_view, model_repository_table):
         self.schema_madlib = schema_madlib
         self.model_view = model_view
         self.model_view_summary = get_summary_tablename(model_view)
-        self.model_type = model_type
-        self.model_data_type = model_data_type
         if model_repository_table:
             self.model_repo_table = model_repository_table
             self.model_repo_table_summary = get_summary_tablename(
@@ -686,7 +683,7 @@ class VersionedModelWriter(object):
         else:
             plpy.error("Model Versioning Error: The model_repository_table " \
                 "must be specified to write the model to a versioned table.")
-        MODEL_VER_DELIMITER = '$model_ver$'
+        self.MODEL_VER_DELIMITER = '$model_ver$'
         # Validate repo table
         validator = VersionedModelTableValidator(
             self.model_view, self.model_repo_table)
@@ -737,6 +734,18 @@ class VersionedModelWriter(object):
                     value that will be converted to a JSON col named summary
                     in the summary repo table.
         """
+        # Get value of model_type before quoting it in function
+        # _store_model_table_summary()
+        if repo_summary_cols_dict['model_type']:
+            self.model_type = repo_summary_cols_dict['model_type'].strip()
+        else:
+            plpy.error("Model Versioning Error: Invalid model type.")
+        # Get value of model_data_type before quoting it in function
+        # _store_model_table_summary()
+        if repo_summary_cols_dict['model_data_type']:
+            self.model_data_type = repo_summary_cols_dict['model_data_type'].strip()
+        else:
+            plpy.error("Model Versioning Error: Invalid model data type.")
         # We need a unique model id for each model train call (for every
         # such call, a single row is inserted into the summary table,
         # but  in case of grouping, multiple rows could be inserted into the
@@ -747,6 +756,7 @@ class VersionedModelWriter(object):
         # MADlib model id to get the serial model_id value. This serial value
         # is written into the model repo table. Note that model_id column in the
         # repo table is NOT serial.
+
         model_id = self._store_model_table_summary(
             repo_summary_cols_dict, model_summary_json_dict)
         self._store_model_table(
@@ -763,8 +773,6 @@ class VersionedModelWriter(object):
                                    model_summary_json):
         # Quote all the summary table column values. Add keys to the dict that
         # were not passed in.
-        repo_summary_cols_dict['model_type'] = self.model_type
-        repo_summary_cols_dict['model_data_type'] = self.model_data_type
         repo_summary_cols_dict['summary'] = self._to_json(model_summary_json)
         repo_summary_cols_dict['model_table'] = self.model_view
         repo_summary_cols_dict['model_repository'] = self.model_repo_table
@@ -846,13 +854,11 @@ class VersionedModelReader():
     """
         Class that exposes functions to read models from repository table.
     """
-    def __init__(self, schema_madlib, model_table,
-                 model_data_type, model_id):
+    def __init__(self, schema_madlib, model_table, model_id):
         self.schema_madlib = schema_madlib
         self.model_table = model_table
         self.model_table_summary = get_summary_tablename(self.model_table)
         self.model_id = model_id
-        self.model_data_type = model_data_type
         self.drop_temp_model_views = False
         self.model_to_use = self.model_table
         self.model_summary_to_use = self.model_table_summary
