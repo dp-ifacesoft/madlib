@@ -92,12 +92,17 @@ SUMMARY_REPO_COLS_TO_QUOTE = [
 def get_summary_tablename(tbl):
     return add_postfix(tbl, '_summary') if tbl else None
 
-# TODO both predict and train have very specific checks. The validate
-# functions in this class are sometimes confusing because all these checks are combined into
-# just one function. add tests for validator
 class VersionedModelTableValidator(object):
+    """
+        Class to validate model tables. This can validate both regular model
+        tables, and also versioned model tables.
+    """
     def __init__(self, out_table=None, model_repository_table=None,
                  model_id=None):
+        """
+            Args:
+                @params out_table, str: Name of the output table
+        """
         if not out_table and not model_repository_table:
             plpy.error("Error: Either the output table/view, " \
                 "or the model repository table param must be specified.")
@@ -119,14 +124,16 @@ class VersionedModelTableValidator(object):
                all(colname in expected_cols for colname in cols)
 
     def _validate_model_repo_tables(self):
-        # If a model repo table is specified, make validations
-        # for the model repo table scenario.
-        # move the view checks to predict validate
+        """
+            Validate model repo and summary tables. If they exist, they are
+            valid only if they contain some expected columns. If they don't
+            exist, set a flag to indicate the same so that it can be created.
+        """
         model_repo_table_exists = table_exists(self.model_repo_table)
         model_repo_table_summary_exists = table_exists(
             self.model_repo_table_summary)
         if model_repo_table_exists and model_repo_table_summary_exists:
-            # check if the two tables have specific columns
+            # Check if the two tables have specific columns.
             # First check for model_repo_table cols and types.
             model_repo_table_cols = get_cols(self.model_repo_table)
             _assert(self._is_valid_versioned_table(
@@ -149,15 +156,27 @@ class VersionedModelTableValidator(object):
             self.repo_tables_exist = False
 
     def validate_model_tables_for_predict(self):
-        # For reader, we will assume that only out_table is set. It is either
-        # set to a model table, or the model repository table.
-
+        """
+            This validate function must be called during predict, i.e., when
+            we want to read from an existing model, or repository table. So
+            validation here is based on the requirements for the same.
+        """
+        # For reader, we will assume that only out_table is set.
         if self.model_id:
-            # these two statements are confusing
+            # The output table specified during predict could be one of three
+            # values:
+            # 1) a view pointing to a model_id in repo table
+            # 2) a repo table
+            # 3) a regular non-versioned output table.
+            # ONLY in case 2 should model_id be set, we must error out
+            # otherwise. So, if model_id is specified, we assume that the
+            # out_table passed by the calling function is actually the repo
+            # table. So, set the variables accordingly and validate.
             self.model_repo_table = self.out_table
             self.model_repo_table_summary = self.out_table_summary
 
-            # Assert that model_repo_table is NOT a view.
+            # Assert that model_repo_table is NOT a view. It should only be a
+            # regular table.
             is_model_repo_a_view = table_exists(self.model_repo_table,
                                                 relkind=VIEWS_ONLY)
             is_model_repo_summary_a_view = table_exists(
@@ -173,6 +192,10 @@ class VersionedModelTableValidator(object):
                         self.model_repo_table, self.model_repo_table_summary))
             self.create_view_from_repo_table = True
         else:
+            # If model_id is not specified, out_table could either be a regular
+            # table, or a view pointing to some model_id in some repo table.
+            # Assert that tables/views named out_table and out_table_summary
+            # exist.
             _assert(table_exists(self.out_table),
                 "Given model table/view {} does not exist.".format(self.out_table))
             _assert(table_exists(self.out_table_summary),
@@ -194,7 +217,6 @@ class VersionedModelTableValidator(object):
         exception. If model_repository_table is not specified, then check
         for the validity of the out_table.
         """
-        # refactor this
         if self.model_repo_table:
             self._validate_model_repo_tables()
             # Validate self.out_table. This could either be intended to be a
@@ -217,7 +239,7 @@ class VersionedModelTableValidator(object):
                     self.out_table, self.model_repo_table_summary))
         else:
             # If self.model_repo_table does not exist, then neither a view nor
-            # a table named self.out_table/self.out_table_summary can exist.
+            # a table named self.out_table/self.out_table_summary should exist.
             _assert(not table_exists(
                     self.out_table, only_first_schema=True),
                 "Error: Output table {0} already exists.".format(
@@ -250,6 +272,8 @@ class VersionedModelViewCreator(object):
                 @params model_data_type, str: The type of the column of the
                             model_data in the view. Default type is double
                             precision[].
+                @params validate_tables, bool (optional): Do not vaalidate
+                            repo tables if flag is set to False. Default True.
         """
         self.schema_madlib = schema_madlib
         self.model_repo_table = model_repo_table
@@ -363,13 +387,13 @@ class VersionedModelViewCreator(object):
         ## ----------------------------------------------------------------- ##
         ## ----------------------------------------------------------------- ##
         # Stitch various components together. Example query to create view
-        # from model_repo_table:
+        # from model_repo_table for a Decision Tree model:
         # drop view if exists latest_model;
         # create view latest_model as
         #     with latest as (select * from train_output order by model_id = 1)
         #     select
-        #         (latest.model_attributes->>'pruning_cp')::int as pruning_cp,
-        #         (latest.model_attributes->>'tree_depth')::int as tree_depth
+        #         (latest.attributes->>'pruning_cp')::int as pruning_cp,
+        #         (latest.attributes->>'tree_depth')::int as tree_depth
         #         latest.model_type,
         #         madlib.bytea_to_bytea8(latest.model_data)::madlib.bytea8 as model_data,
         #         a1.cat_n_levels,
@@ -378,17 +402,17 @@ class VersionedModelViewCreator(object):
         #     from
         #         (select array_agg(v) as cat_n_levels from
         #             (select json_array_elements(
-        #                    metrics->'cat_n_levels')::text::int as v from latest
+        #                    attributes->'cat_n_levels')::text::int as v from latest
         #             ) as aa1
         #         ) as a1,
         #         (select array_agg(v) as cat_levels_in_text from
-        #             (select ('[' || json_array_elements( model_attributes->'cat_levels_in_text') || ']'
+        #             (select ('[' || json_array_elements( attributes->'cat_levels_in_text') || ']'
         #                     )::json->>0 as v from latest
         #             ) as aa2
         #         ) as a2,
         #         (select array_agg(v) as impurity_var_importance from
         #             (select json_array_elements(
-        #                   metrics->'impurity_var_importance')::text::double precision as v from latest
+        #                   attributes->'impurity_var_importance')::text::double precision as v from latest
         #             ) as aa3
         #         ) as a3,
         #         latest;
@@ -460,9 +484,9 @@ class VersionedModelViewCreator(object):
         ## ----------------------------------------------------------------- ##
         ## ----------------------------------------------------------------- ##
         # Example of what we want to return for a scalar col, where JSON blob
-        # is `model_attributes`, and the key which contains a scalar value in that
+        # is `attributes`, and the key which contains a scalar value in that
         # blob is `pruning_cp`:
-        # select (latest.model_attributes->>'pruning_cp')::int as pruning_cp
+        # select (latest.attributes->>'pruning_cp')::int as pruning_cp
         ## ----------------------------------------------------------------- ##
         ## ----------------------------------------------------------------- ##
         select_scalars_list = ["({0}.{1}->>'{2}')::{3} AS {2}".format(
@@ -501,10 +525,10 @@ class VersionedModelViewCreator(object):
         # ) as a1,
 
         # Example of what we want to return for a TEXT array from a json
-        # object, where the json column is `model_attributes`, and the key in
+        # object, where the json column is `attributes`, and the key in
         # the blob that contains a TEXT array value is `cat_levels_in_text`:
         # (select array_agg(v) as cat_levels_in_text from
-        #     (select ('[' || json_array_elements( model_attributes->'cat_levels_in_text') || ']'
+        #     (select ('[' || json_array_elements( attributes->'cat_levels_in_text') || ']'
         #             )::json->>0 as v from latest
         #     ) as aa2
         # ) as a2,
@@ -662,6 +686,8 @@ class VersionedModelWriter(object):
         else:
             plpy.error("Model Versioning Error: The model_repository_table " \
                 "must be specified to write the model to a versioned table.")
+        MODEL_VER_DELIMITER = '$model_ver$'
+        # Validate repo table
         validator = VersionedModelTableValidator(
             self.model_view, self.model_repo_table)
         validator.validate_model_tables_for_train()
@@ -694,6 +720,23 @@ class VersionedModelWriter(object):
 
     def store_model(self, model_data, model_attributes_json_dict,
                     repo_summary_cols_dict, model_summary_json_dict):
+        """
+            Add new rows into model repository and model repo summary
+            tables. This function also creates a view named model_view
+            that points to the new model that is inserted by this function.
+            Args:
+                @params model_data, double array/bytea8: The actual model
+                    (coefficients)
+                @params model_attributes_json_dict, dict: Dict containing key
+                    value that will be converted to a JSON col named
+                    attributes in the repo table.
+                @params repo_summary_cols_dict, dict: Dict capturing the
+                    values for all other non-JSON columns in the summary
+                    repo table.
+                @params model_summary_json_dict, dict: Dict containing key
+                    value that will be converted to a JSON col named summary
+                    in the summary repo table.
+        """
         # We need a unique model id for each model train call (for every
         # such call, a single row is inserted into the summary table,
         # but  in case of grouping, multiple rows could be inserted into the
@@ -704,7 +747,6 @@ class VersionedModelWriter(object):
         # MADlib model id to get the serial model_id value. This serial value
         # is written into the model repo table. Note that model_id column in the
         # repo table is NOT serial.
-
         model_id = self._store_model_table_summary(
             repo_summary_cols_dict, model_summary_json_dict)
         self._store_model_table(
@@ -716,9 +758,6 @@ class VersionedModelWriter(object):
                                                  self.model_view,
                                                  validate_tables=False)
         view_creator.create_view()
-
-    MODEL_VER_DELIMITER = '$model_ver$'
-
 
     def _store_model_table_summary(self, repo_summary_cols_dict,
                                    model_summary_json):
@@ -798,13 +837,15 @@ class VersionedModelWriter(object):
         """.format(**locals())
         plpy.execute(sql)
 
-    # TODO: can we use sql's to_json
     def _to_json(self, json_dict):
         if type(json_dict) == dict:
             return json.dumps(json_dict)
         return '{}'
 
 class VersionedModelReader():
+    """
+        Class that exposes functions to read models from repository table.
+    """
     def __init__(self, schema_madlib, model_table,
                  model_data_type, model_id):
         self.schema_madlib = schema_madlib
@@ -820,6 +861,12 @@ class VersionedModelReader():
         self.validator.validate_model_tables_for_predict()
 
     def get_model_tables_for_prediction(self):
+        """
+            This function creates two temporary views, one from model repo
+            table, and another from model repo summary table for a given
+            model_id. This function is typically called from predict
+            functions of modules that support model versioning.
+        """
         if self.validator.create_view_from_repo_table:
             self.model_to_use = unique_string(desp='model_view')
             self.model_summary_to_use = get_summary_tablename(self.model_to_use)
@@ -840,6 +887,10 @@ class VersionedModelReader():
         return json_dict
 
     def __del__(self):
+        """
+            This function cleans up temporary views created by
+            get_model_tables_for_prediction().
+        """
         if self.drop_temp_model_views:
             plpy.execute("""
                     DROP VIEW IF EXISTS {0}, {1}
