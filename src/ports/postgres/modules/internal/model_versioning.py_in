@@ -21,8 +21,8 @@ import json
 import plpy
 import types
 
+from internal.model_versioning_helper import *
 from utilities.utilities import _assert
-from utilities.utilities import add_postfix
 from utilities.utilities import BYTEA, BYTEA8
 from utilities.utilities import is_platform_pg
 from utilities.utilities import is_valid_psql_type
@@ -34,63 +34,8 @@ from utilities.validate_args import quote_ident
 from internal.db_utils import quote_dict_values
 from utilities.validate_args import table_exists
 from utilities.validate_args import TABLES_ONLY, VIEWS_ONLY
-from collections import OrderedDict
 
 m4_changequote(`<!', `!>')
-
-#TODO do not hardcode col names anywhere else
-MODEL_TABLE_COLS = OrderedDict([
-    ('model_id', 'int'),
-    ('grouping_values', 'text'),
-    ('model_type', 'text'),
-    ('model_data', 'bytea'),
-    ('attributes', 'JSON')
-    ])
-# TODO: Expose functions to populate non-JSON columns from every calling fns.
-MODEL_TABLE_SUMMARY_COLS = OrderedDict([
-    ('model_id', 'serial'),
-    ('model_type', 'text'),
-    ('summary', 'JSON'),
-    ('start_training_time', 'timestamp'),
-    ('end_training_time', 'timestamp'),
-    ('source_table', 'text'),
-    ('model_table', 'text'),
-    ('model_repository', 'text'),
-    ('dependent_varname', 'text'),
-    ('list_of_features', 'text'),
-    ('list_of_features_to_exclude', 'text'),
-    ('independent_varnames', 'text[]'),
-    ('grouping_cols', 'text'),
-    ('name', 'text'),
-    ('description', 'text'),
-    ('madlib_version', 'text'),
-    ('model_data_type', 'text'),
-    ('__madlib_internal_id__', 'text')
-    ])
-COLS_FOR_VIEW_FROM_SUMMARY_REPO = [
-    'model_type',
-    'start_training_time',
-    'end_training_time',
-    'source_table',
-    'model_table',
-    'model_repository',
-    'dependent_varname',
-    'list_of_features',
-    'list_of_features_to_exclude',
-    'independent_varnames',
-    'grouping_cols',
-    'name',
-    'description']
-SUMMARY_REPO_COLS_TO_QUOTE = [
-    'dependent_varname',
-    'list_of_features',
-    'list_of_features_to_exclude',
-    'grouping_cols',
-    'name',
-    'description']
-
-def get_summary_tablename(tbl):
-    return add_postfix(tbl, '_summary') if tbl else None
 
 class VersionedModelTableValidator(object):
     """
@@ -291,14 +236,14 @@ class VersionedModelViewCreator(object):
         """
             Return part of the SQL (header) necessary for creating view.
         """
+        model_id_colname = get_model_id_colname()
         view_header = """
             DROP VIEW IF EXISTS {view_name};
             CREATE VIEW {view_name} AS
             WITH {row_name} AS (
                 SELECT * FROM {input_table_name}
-                WHERE model_id={self.model_id})
-        """.format(self=self, row_name=row_name, view_name=view_name,
-                   input_table_name=input_table_name)
+                WHERE {model_id_colname}={model_id})
+        """.format(model_id=self.model_id, **locals())
         return view_header
 
     def create_view(self, model_attributes_types_dict=None,
@@ -433,23 +378,28 @@ class VersionedModelViewCreator(object):
         # casted to the correct model_data_type too.
         if table_name == self.model_repo_table:
             model_data_type = plpy.execute("""
-                    SELECT model_data_type
+                    SELECT {model_data_type_colname}
                     FROM {model_repo_summary_table}
-                    WHERE model_id={model_id}
+                    WHERE {model_id_colname}={model_id}
                 """.format(
                     model_repo_summary_table=self.model_repo_summary_table,
-                    model_id=self.model_id))[0]['model_data_type']
+                    model_id=self.model_id,
+                    model_id_colname=get_model_id_colname(),
+                    model_data_type_colname=get_model_data_type_colname())
+                )[0]['model_data_type']
             if model_data_type == 'bytea8':
-                model_data_str = "{schema_madlib}.bytea_to_bytea8(model_data)" \
-                    " as model_data"
+                model_data_str = "{schema_madlib}.bytea_to_bytea8({model_data_colname})" \
+                    " as {model_data_colname}"
             elif model_data_type == 'double precision[]':
                 model_data_str = "{schema_madlib}._double_array_recv" \
-                    "(model_data, 'double precision'::regtype::int) as model_data"
+                    "({model_data_colname}, 'double precision'::regtype::int) " \
+                    "as {model_data_colname}"
             else:
                 plpy.error("Invalid model_data_type {}".format(
                     self.model_data_type))
             select_clause += ', ' + model_data_str.format(
-                schema_madlib=self.schema_madlib)
+                schema_madlib=self.schema_madlib,
+                model_data_colname=get_model_data_colname())
         elif table_name == self.model_repo_summary_table:
             select_clause += ', ' + ', '.join(COLS_FOR_VIEW_FROM_SUMMARY_REPO)
 
@@ -653,21 +603,27 @@ class VersionedModelViewCreator(object):
             Return back the JSON columns required to create views from both
             model_repo table and model_repo_summary.
         """
+        model_id_colname=get_model_id_colname()
         model_attrs_json = plpy.execute("""
-                SELECT attributes
-                FROM {0}
-                WHERE model_id={1}
-            """.format(self.model_repo_table, self.model_id))
+                SELECT {attr_colnam}
+                FROM {self.model_repo_table}
+                WHERE {model_id_colname}={self.model_id}
+            """.format(self=self,
+                       attr_colnam=get_attributes_colname(),
+                       model_id_colname=model_id_colname))
         if not model_attrs_json:
             plpy.error("Invalid model id ({0}) provided.".format(self.model_id))
 
         model_summary_json = plpy.execute("""
-                SELECT summary
-                FROM {0}
-                WHERE model_id={1}
-            """.format(self.model_repo_summary_table, self.model_id))
+                SELECT {summary_colname}
+                FROM {self.model_repo_summary_table}
+                WHERE {model_id_colname}={self.model_id}
+            """.format(self=self,
+                       summary_colname=get_summary_colname(),
+                       model_id_colname=model_id_colname))
         if not model_summary_json:
-            plpy.error("Missing summary table for model_id {0}!".format(self.model_id))
+            plpy.error("Missing summary table for {0} {1}.".format(
+                model_id_colname, self.model_id))
 
         return model_attrs_json[0], model_summary_json[0]
 
@@ -695,9 +651,11 @@ class VersionedModelWriter(object):
         if is_platform_pg():
             distributed_by_clause = ''
         else:
-            distributed_by_clause= 'DISTRIBUTED BY (model_id)'
+            distributed_by_clause= 'DISTRIBUTED BY ({})'.format(
+                get_model_id_colname())
         model_table_cols = ', '.join(['{0} {1}'.format(colname, coltype)
-                    for colname, coltype in MODEL_TABLE_COLS.items()])
+                    for colname, coltype in
+                    MODEL_TABLE_COLS.items()])
         create_model_sql = """
                 CREATE TABLE {self.model_repo_table}
                 ({model_table_cols})
@@ -787,8 +745,10 @@ class VersionedModelWriter(object):
         # For now the calling function is expected to handle
         # special characters for all text columns in the summary repo table.
         # do not insert model_id value because it is serial
+        model_id_colname = get_model_id_colname()
+        internal_id_colname = get_internal_id_colname()
         summary_table_cols = ', '.join(['{0}'.format(colname)
-            for colname in MODEL_TABLE_SUMMARY_COLS if colname != 'model_id'])
+            for colname in MODEL_TABLE_SUMMARY_COLS if colname != model_id_colname])
         repo_summary_cols_dict.update(locals())
         sql = """
             INSERT INTO {self.model_repo_table_summary} ({summary_table_cols})
@@ -814,12 +774,14 @@ class VersionedModelWriter(object):
         plpy.execute(sql)
 
         model_id = plpy.execute("""
-                SELECT model_id
+                SELECT {model_id_colname}
                 FROM {model_repo_table_summary}
-                WHERE __madlib_internal_id__={madlib_internal_id}
+                WHERE {internal_id_colname}={madlib_internal_id}
             """.format(
-            model_repo_table_summary=self.model_repo_table_summary,
-            madlib_internal_id=repo_summary_cols_dict['__madlib_internal_id__'])
+                model_id_colname=model_id_colname,
+                model_repo_table_summary=self.model_repo_table_summary,
+                internal_id_colname=internal_id_colname,
+                madlib_internal_id=repo_summary_cols_dict['__madlib_internal_id__'])
         )[0]['model_id']
         return model_id
 

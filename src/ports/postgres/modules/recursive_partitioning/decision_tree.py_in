@@ -17,6 +17,7 @@ from itertools import groupby
 from collections import Iterable
 
 from internal.db_utils import quote_literal
+from internal.model_versioning_helper import get_summary_cols_dict
 from internal.model_versioning import VersionedModelReader
 from internal.model_versioning import VersionedModelTableValidator
 from internal.model_versioning import VersionedModelWriter
@@ -939,6 +940,8 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     independent_varnames = py_list_to_sql_string(
         map(quote_literal, cat_features+con_features),
         array_type='text', long_format=True)
+    model_type = 'Decision Tree'
+    model_data_type = 'bytea8'
 
     # List of keys in JSON summary column. NOTE that these names must be the
     # same as the corresponding variable names.
@@ -950,24 +953,10 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         'dependent_var_levels', 'dependent_var_type',
         'independent_var_types', 'input_cp', 'n_folds',
         'null_proxy', 'num_all_groups', 'method']
-    model_summary = _filter_locals_dict(model_summary_json_fields, **locals())
-    # List of columns in summary repo table. These are expected to be common
-    # to all modules.
-    model_type = 'Decision Tree'
-    model_data_type = 'bytea8'
-    summary_cols_fields = ['source_table',
-                           'list_of_features',
-                           'list_of_features_to_exclude',
-                           'dependent_varname',
-                           'grouping_cols',
-                           'start_training_time',
-                           'end_training_time',
-                           'independent_varnames',
-                           'name',
-                           'description',
-                           'model_type',
-                           'model_data_type']
-    model_summary_cols = _filter_locals_dict(summary_cols_fields, **locals())
+    model_summary_json_dict = _filter_locals_dict(
+        model_summary_json_fields, **locals())
+    # Update values of non-JSON columns in summary repo table.
+    model_summary_cols = get_summary_cols_dict(**locals())
 
     model_data = tree_state['tree_state']
     model_attributes = dict(
@@ -980,7 +969,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     model_writer = VersionedModelWriter(
         schema_madlib, output_table_name, model_repository_table)
     model_writer.store_model(model_data, model_attributes,
-                             model_summary_cols, model_summary)
+                             model_summary_cols, model_summary_json_dict)
 
 # ------------------------------------------------------------
 

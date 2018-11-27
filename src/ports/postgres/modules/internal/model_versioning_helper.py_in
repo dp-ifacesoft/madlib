@@ -1,0 +1,116 @@
+# coding=utf-8
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+from collections import OrderedDict
+from utilities.utilities import add_postfix
+import plpy
+
+##########################################################
+## Helper variables and functions related to column names
+## in model repo summary tables.
+##########################################################
+MODEL_TABLE_COLS = OrderedDict([
+    ('model_id', 'int'),
+    ('grouping_values', 'text'),
+    ('model_type', 'text'),
+    ('model_data', 'bytea'),
+    ('attributes', 'JSON')
+    ])
+MODEL_TABLE_SUMMARY_COLS = OrderedDict([
+    ('model_id', 'serial'),
+    ('model_type', 'text'),
+    ('summary', 'JSON'),
+    ('start_training_time', 'timestamp'),
+    ('end_training_time', 'timestamp'),
+    ('source_table', 'text'),
+    ('model_table', 'text'),
+    ('model_repository', 'text'),
+    ('dependent_varname', 'text'),
+    ('list_of_features', 'text'),
+    ('list_of_features_to_exclude', 'text'),
+    ('independent_varnames', 'text[]'),
+    ('grouping_cols', 'text'),
+    ('name', 'text'),
+    ('description', 'text'),
+    ('madlib_version', 'text'),
+    ('model_data_type', 'text'),
+    ('__madlib_internal_id__', 'text')
+    ])
+COLS_FOR_VIEW_FROM_SUMMARY_REPO = [
+    'model_type',
+    'start_training_time',
+    'end_training_time',
+    'source_table',
+    'model_table',
+    'model_repository',
+    'dependent_varname',
+    'list_of_features',
+    'list_of_features_to_exclude',
+    'independent_varnames',
+    'grouping_cols',
+    'name',
+    'description']
+SUMMARY_REPO_COLS_TO_QUOTE = [
+    'dependent_varname',
+    'list_of_features',
+    'list_of_features_to_exclude',
+    'grouping_cols',
+    'name',
+    'description']
+
+def get_summary_cols_dict(**kwargs):
+    summary_cols_fields = ['source_table',
+                           'list_of_features',
+                           'list_of_features_to_exclude',
+                           'dependent_varname',
+                           'grouping_cols',
+                           'start_training_time',
+                           'end_training_time',
+                           'independent_varnames',
+                           'name',
+                           'description',
+                           'model_type',
+                           'model_data_type']
+    model_summary_cols_dict = {x:kwargs[x] for x in summary_cols_fields if x in kwargs}
+    if len(model_summary_cols_dict) != len(summary_cols_fields):
+        missing_cols = list(
+            set(summary_cols_fields) -
+            set(model_summary_cols_dict.keys()))
+        plpy.error("Model Versioning Error: Summary columns {} " \
+            "are not assigned any value.".format(missing_cols))
+    return model_summary_cols_dict
+
+def get_model_id_colname():
+    return 'model_id'
+def get_attributes_colname():
+    return 'attributes'
+def get_summary_colname():
+    return 'summary'
+def get_model_data_type_colname():
+    return 'model_data_type'
+def get_model_data_colname():
+    return 'model_data'
+def get_internal_id_colname():
+    return '__madlib_internal_id__'
+
+##########################################################
+## Miscellaneous helper functions
+##########################################################
+def get_summary_tablename(tbl):
+    return add_postfix(tbl, '_summary') if tbl else None
