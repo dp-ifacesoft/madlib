@@ -40,19 +40,19 @@ m4_changequote(`<!', `!>')
 
 #TODO do not hardcode col names anywhere else
 MODEL_TABLE_COLS = OrderedDict([
-    ('model_id','int'),
-    ('grouping_values','text'),
-    ('model_type','text'),
-    ('model_data','bytea'),
-    ('attributes','JSON')
+    ('model_id', 'int'),
+    ('grouping_values', 'text'),
+    ('model_type', 'text'),
+    ('model_data', 'bytea'),
+    ('attributes', 'JSON')
     ])
 # TODO: Expose functions to populate non-JSON columns from every calling fns.
 MODEL_TABLE_SUMMARY_COLS = OrderedDict([
-    ('model_id','serial'),
-    ('model_type','text'),
-    ('summary','JSON'),
-    ('start_training_time','timestamp'),
-    ('end_training_time','timestamp'),
+    ('model_id', 'serial'),
+    ('model_type', 'text'),
+    ('summary', 'JSON'),
+    ('start_training_time', 'timestamp'),
+    ('end_training_time', 'timestamp'),
     ('source_table', 'text'),
     ('model_table', 'text'),
     ('model_repository', 'text'),
@@ -61,10 +61,11 @@ MODEL_TABLE_SUMMARY_COLS = OrderedDict([
     ('list_of_features_to_exclude', 'text'),
     ('independent_varnames', 'text[]'),
     ('grouping_cols', 'text'),
-    ('name','text'),
-    ('description','text'),
-    ('madlib_version','text'),
-    ('__madlib_internal_id__','text')
+    ('name', 'text'),
+    ('description', 'text'),
+    ('madlib_version', 'text'),
+    ('model_data_type', 'text'),
+    ('__madlib_internal_id__', 'text')
     ])
 COLS_FOR_VIEW_FROM_SUMMARY_REPO = [
     'model_type',
@@ -234,7 +235,7 @@ class VersionedModelViewCreator(object):
         the other to model summary table.
     """
     def __init__(self, schema_madlib, model_repo_table, model_id, view_name,
-                 model_data_type=None, validate_tables=True):
+                 validate_tables=True):
         """
             Initialize necessary parameters for view creation.
             Args:
@@ -256,8 +257,6 @@ class VersionedModelViewCreator(object):
         self.repo_view_name = view_name
         self.summary_view_name = get_summary_tablename(self.repo_view_name)
         self.model_repo_summary_table = get_summary_tablename(self.model_repo_table)
-        self.model_data_type = 'double precision[]' if not model_data_type \
-                                    else model_data_type
         model_validator = VersionedModelTableValidator(
             model_repository_table=self.model_repo_table,
             model_id=self.model_id)
@@ -409,10 +408,17 @@ class VersionedModelViewCreator(object):
         # in the repo table, so handle it separately. The model must be type
         # casted to the correct model_data_type too.
         if table_name == self.model_repo_table:
-            if self.model_data_type == 'bytea8':
+            model_data_type = plpy.execute("""
+                    SELECT model_data_type
+                    FROM {model_repo_summary_table}
+                    WHERE model_id={model_id}
+                """.format(
+                    model_repo_summary_table=self.model_repo_summary_table,
+                    model_id=self.model_id))[0]['model_data_type']
+            if model_data_type == 'bytea8':
                 model_data_str = "{schema_madlib}.bytea_to_bytea8(model_data)" \
                     " as model_data"
-            elif self.model_data_type == 'double precision[]':
+            elif model_data_type == 'double precision[]':
                 model_data_str = "{schema_madlib}._double_array_recv" \
                     "(model_data, 'double precision'::regtype::int) as model_data"
             else:
@@ -648,8 +654,6 @@ class VersionedModelWriter(object):
         self.model_view = model_view
         self.model_view_summary = get_summary_tablename(model_view)
         self.model_type = model_type
-        # TODO store model_data_type in summary so that the helper sql function
-        # to create the view can pass along this value.
         self.model_data_type = model_data_type
         if model_repository_table:
             self.model_repo_table = model_repository_table
@@ -710,7 +714,6 @@ class VersionedModelWriter(object):
                                                  self.model_repo_table,
                                                  model_id,
                                                  self.model_view,
-                                                 self.model_data_type,
                                                  validate_tables=False)
         view_creator.create_view()
 
@@ -722,6 +725,7 @@ class VersionedModelWriter(object):
         # Quote all the summary table column values. Add keys to the dict that
         # were not passed in.
         repo_summary_cols_dict['model_type'] = self.model_type
+        repo_summary_cols_dict['model_data_type'] = self.model_data_type
         repo_summary_cols_dict['summary'] = self._to_json(model_summary_json)
         repo_summary_cols_dict['model_table'] = self.model_view
         repo_summary_cols_dict['model_repository'] = self.model_repo_table
@@ -756,6 +760,7 @@ class VersionedModelWriter(object):
                     {name},
                     {description},
                     {madlib_version},
+                    {model_data_type},
                     {__madlib_internal_id__})
         """.format(MODEL_VER_DELIMITER=self.MODEL_VER_DELIMITER,
                    **repo_summary_cols_dict)
@@ -812,9 +817,7 @@ class VersionedModelReader():
         self.model_summary_to_use = self.model_table_summary
         self.validator = VersionedModelTableValidator(
             self.model_table, model_id=self.model_id)
-        # if validate_tables:
         self.validator.validate_model_tables_for_predict()
-        # self._read_all_data()
 
     def get_model_tables_for_prediction(self):
         if self.validator.create_view_from_repo_table:
@@ -823,8 +826,7 @@ class VersionedModelReader():
             view_creator = VersionedModelViewCreator(self.schema_madlib,
                                                      self.model_table,
                                                      self.model_id,
-                                                     self.model_to_use,
-                                                     model_data_type='bytea8')
+                                                     self.model_to_use)
             view_creator.create_view()
             self.drop_temp_model_views = True
         return self.model_to_use, self.model_summary_to_use
