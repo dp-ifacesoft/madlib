@@ -378,14 +378,14 @@ class VersionedModelViewCreator(object):
         # casted to the correct model_data_type too.
         if table_name == self.model_repo_table:
             model_data_type = plpy.execute("""
-                    SELECT {model_data_type_colname}
+                    SELECT {model_dtype_cname}
                     FROM {model_repo_summary_table}
                     WHERE {model_id_colname}={model_id}
                 """.format(
                     model_repo_summary_table=self.model_repo_summary_table,
                     model_id=self.model_id,
                     model_id_colname=get_model_id_colname(),
-                    model_data_type_colname=get_model_data_type_colname())
+                    model_dtype_cname=get_model_data_type_colname())
                 )[0]['model_data_type']
             if model_data_type == 'bytea8':
                 model_data_str = "{schema_madlib}.bytea_to_bytea8({model_data_colname})" \
@@ -694,14 +694,16 @@ class VersionedModelWriter(object):
         """
         # Get value of model_type before quoting it in function
         # _store_model_table_summary()
-        if repo_summary_cols_dict['model_type']:
-            self.model_type = repo_summary_cols_dict['model_type'].strip()
+        model_type_colname = get_model_type_colname()
+        if repo_summary_cols_dict[model_type_colname]:
+            self.model_type = repo_summary_cols_dict[model_type_colname].strip()
         else:
             plpy.error("Model Versioning Error: Invalid model type.")
         # Get value of model_data_type before quoting it in function
         # _store_model_table_summary()
-        if repo_summary_cols_dict['model_data_type']:
-            self.model_data_type = repo_summary_cols_dict['model_data_type'].strip()
+        model_dtype_colname = get_model_data_type_colname()
+        if repo_summary_cols_dict[model_dtype_colname]:
+            self.model_data_type = repo_summary_cols_dict[model_dtype_colname].strip()
         else:
             plpy.error("Model Versioning Error: Invalid model data type.")
         # We need a unique model id for each model train call (for every
@@ -729,24 +731,31 @@ class VersionedModelWriter(object):
 
     def _store_model_table_summary(self, repo_summary_cols_dict,
                                    model_summary_json):
+        # Get names of keys we want to use/update in repo_summary_cols_dict.
+        # These keys are essentially column names in summary table repo.
+        model_id_colname = get_model_id_colname()
+        internal_id_colname = get_internal_id_colname()
+        summary_colname = get_summary_colname()
+        model_tbl_colname = get_model_table_colname()
+        model_repo_colname = get_model_repository_colname()
+        mad_ver_colname = get_madlib_version_colname()
+        ind_var_colname = get_ind_var_colname()
         # Quote all the summary table column values. Add keys to the dict that
         # were not passed in.
-        repo_summary_cols_dict['summary'] = self._to_json(model_summary_json)
-        repo_summary_cols_dict['model_table'] = self.model_view
-        repo_summary_cols_dict['model_repository'] = self.model_repo_table
-        repo_summary_cols_dict['madlib_version'] = madlib_version(
+        repo_summary_cols_dict[summary_colname] = self._to_json(model_summary_json)
+        repo_summary_cols_dict[model_tbl_colname] = self.model_view
+        repo_summary_cols_dict[model_repo_colname] = self.model_repo_table
+        repo_summary_cols_dict[mad_ver_colname] = madlib_version(
             self.schema_madlib)
-        repo_summary_cols_dict['__madlib_internal_id__'] = unique_string(prefix_has_temp=False)
+        repo_summary_cols_dict[internal_id_colname] = unique_string(prefix_has_temp=False)
         # Do not quote list type columns.
         quote_dict_values(repo_summary_cols_dict,
-                          ['model_id', 'independent_varnames'],
+                          [model_id_colname, ind_var_colname],
                           self.MODEL_VER_DELIMITER)
 
         # For now the calling function is expected to handle
         # special characters for all text columns in the summary repo table.
         # do not insert model_id value because it is serial
-        model_id_colname = get_model_id_colname()
-        internal_id_colname = get_internal_id_colname()
         summary_table_cols = ', '.join(['{0}'.format(colname)
             for colname in MODEL_TABLE_SUMMARY_COLS if colname != model_id_colname])
         repo_summary_cols_dict.update(locals())
@@ -781,8 +790,8 @@ class VersionedModelWriter(object):
                 model_id_colname=model_id_colname,
                 model_repo_table_summary=self.model_repo_table_summary,
                 internal_id_colname=internal_id_colname,
-                madlib_internal_id=repo_summary_cols_dict['__madlib_internal_id__'])
-        )[0]['model_id']
+                madlib_internal_id=repo_summary_cols_dict[internal_id_colname])
+        )[0][model_id_colname]
         return model_id
 
     def _store_model_table(self, model_id, model_data, model_attributes):

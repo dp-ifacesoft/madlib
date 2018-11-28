@@ -104,11 +104,20 @@ def get_summary_colname():
     return 'summary'
 def get_model_data_type_colname():
     return 'model_data_type'
+def get_model_type_colname():
+    return 'model_type'
 def get_model_data_colname():
     return 'model_data'
 def get_internal_id_colname():
     return '__madlib_internal_id__'
-
+def get_model_table_colname():
+    return 'model_table'
+def get_model_repository_colname():
+    return 'model_repository'
+def get_madlib_version_colname():
+    return 'madlib_version'
+def get_ind_var_colname():
+    return 'independent_varnames'
 ##########################################################
 ## Miscellaneous helper functions
 ##########################################################
