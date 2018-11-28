@@ -231,12 +231,14 @@ RETURNS VOID AS $$
         if use_cpu_only:
             model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
         else:
-            parallel_model = keras.utils.multi_gpu_model(model, gpus=8)
+            parallel_model = keras.utils.multi_gpu_model(model, gpus=2)
             parallel_model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
 
         return {"model" : model, "parallel_model" : parallel_model}
 
-    model_template = create_model_architecture(n_classes,use_cpu_only)
+    with tf.device("/cpu:0"):
+        model_template = create_model_architecture(n_classes,use_cpu_only)
+
     model = model_template["model"]
     parallel_model = model_template["parallel_model"]
 
@@ -269,7 +271,8 @@ RETURNS VOID AS $$
     all_y_test = keras.utils.to_categorical(all_y_test,n_classes)
 
     eval_start = time.time()
-    parallel_model.evaluate(all_x_test, all_y_test, verbose=0)
+    with tf.device("/cpu:0"):
+        parallel_model.evaluate(all_x_test, all_y_test, verbose=0)
     eval_time = time.time()
     plpy.info("time to evaluate model = {0}".format(eval_time-eval_start))
 
@@ -279,6 +282,7 @@ RETURNS VOID AS $$
         SELECT MADLIB_SCHEMA.cnn_keras_step(
             x::REAL[],
             y::SMALLINT[],
+            gp_segment_id,
             $MAD${0}$MAD$::text,
             $1
         ) AS keras_model
@@ -316,8 +320,8 @@ RETURNS VOID AS $$
             weightsList.append(np.fromstring(a,dtype='float32').reshape(model_shapes[j]))
             j+=1
         model_eval.set_weights(weightsList)
-        agg_score = model_eval.evaluate(all_x_test, all_y_test, verbose=0)[1]
-        #agg_score = model_eval.evaluate(x_test, y_test, verbose=0)[1]
+        with tf.device("/cpu:0"):
+            agg_score = model_eval.evaluate(all_x_test, all_y_test, verbose=0)[1]
         plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
         agg_scores.append(agg_score)
 
@@ -337,6 +341,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
     state               BYTEA,
     ind_var             REAL[],
     dep_var             SMALLINT[],
+    seg                 INTEGER,
     architecture        TEXT,
     previous_state      BYTEA
 ) RETURNS BYTEA AS
@@ -396,7 +401,7 @@ prep_1 = time.time()  # set weights
 try:
     if use_cpu_only:
         raise(ValueError)
-    parallel_model = keras.utils.multi_gpu_model(keras_model, gpus=8)
+    parallel_model = keras.utils.multi_gpu_model(keras_model, gpus=(seg%4,seg%4+4))
     plpy.info("Training using GPU's")
 except ValueError:
     # This segment doesn't have GPU's enabled
@@ -430,7 +435,7 @@ plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy ar
 
 plpy.info("will try to fit now")
 parallel_model.fit(x_train, y_train,
-               batch_size=32,
+               batch_size=50,
                epochs=1,
                verbose=0)
 end = time.time()
@@ -458,6 +463,7 @@ $$
 import json
 import numpy as np
 import time
+import plpy
 
 plpy.info("Starting merge")
 merge_start = time.time()
@@ -476,7 +482,7 @@ for a in merged_weights:
     model_string += "splitter"
 
 merge_finish = time.time()
-plpy.info("cnn_keras_merge time = ".format(merge_finish-merge_start))
+plpy.info("cnn_keras_merge time = {}".format(merge_finish-merge_start))
 
 return model_string
 $$
@@ -490,6 +496,8 @@ $$
 import json
 import time
 import numpy as np
+import plpy
+
 plpy.info("Starting final function")
 final_start = time.time()
 
@@ -501,7 +509,7 @@ for a in normalized_weights:
     model_string += "splitter"
 
 final_finish = time.time()
-plpy.info("cnn_keras_finale time = ".format(final_finish-final_start))
+plpy.info("cnn_keras_final time = {}".format(final_finish-final_start))
 return model_string
 $$
 LANGUAGE plpythonu
@@ -509,11 +517,13 @@ m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
 DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(REAL[],
                                                       SMALLINT[],
+                                                      INTEGER,
                                                       TEXT,
                                                       BYTEA);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
     /* ind_var */             REAL[],
     /* dep_var */             SMALLINT[],
+    /* seg */                 INTEGER,
     /* architecture */        TEXT,
     /* previous_state */      BYTEA
 )(
