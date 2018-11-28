@@ -55,8 +55,8 @@ from validation.cross_validation import cross_validation_grouping_w_params
 
 def _tree_validate_args(
         split_criterion, training_table_name, output_table_name,
-        id_col_name, list_of_features, dependent_variable,
-        list_of_features_to_exclude, grouping_cols, weights, max_depth,
+        id_col_name, features_to_include, dependent_variable,
+        features_to_exclude, grouping_col, weights, max_depth,
         min_split, min_bucket, n_bins, cp, n_folds, model_repository_table,
         **kwargs):
     """ Validate the arguments
@@ -73,7 +73,7 @@ def _tree_validate_args(
     if n_folds and model_repository_table:
         plpy.error("DT error: Model versioning is currently not supported " \
             "for cross validation.")
-    if n_folds and grouping_cols:
+    if n_folds and grouping_col:
         plpy.error("DT error: Model versioning is currently not " \
             "supported for grouping.")
 
@@ -87,16 +87,16 @@ def _tree_validate_args(
             "Decision tree error: Invalid dependent variable ({0}).".
             format(dependent_variable))
 
-    _assert(list_of_features and list_of_features.strip(),
+    _assert(features_to_include and features_to_include.strip(),
             "Decision tree error: Features to include is empty.")
 
-    if list_of_features.strip() != '*':
-        _assert(is_var_valid(training_table_name, list_of_features),
+    if features_to_include.strip() != '*':
+        _assert(is_var_valid(training_table_name, features_to_include),
                 "Decision tree error: Invalid feature list ({0})".
-                format(list_of_features))
+                format(features_to_include))
 
-    if grouping_cols:
-        _assert(is_var_valid(training_table_name, grouping_cols),
+    if grouping_col:
+        _assert(is_var_valid(training_table_name, grouping_col),
                 "Decision tree error: Invalid grouping column argument.")
 
     if weights is not None and weights.strip() != '':
@@ -106,7 +106,7 @@ def _tree_validate_args(
             "Decision tree error: maximum tree depth must be positive and less than 100.")
 
     _assert(not table_is_empty(training_table_name,
-                               _get_filter_str(dependent_variable, grouping_cols)),
+                               _get_filter_str(dependent_variable, grouping_col)),
             "Decision tree error: Data table ({0}) is empty "
             "(after filtering invalid tuples)".
             format(training_table_name))
@@ -139,36 +139,36 @@ def _validate_split_criterion(split_criterion, is_classification):
 
 
 def _get_features_to_use(schema_madlib, training_table_name,
-                         list_of_features, list_of_features_to_exclude,
+                         features_to_include, features_to_exclude,
                          id_col_name, weights, dependent_variable,
-                         grouping_cols=None, **kwargs):
+                         grouping_col=None, **kwargs):
     """ Expand '*' syntax and exclude some features
 
-    Ignore 'list_of_features_to_exclude' if 'list_of_features' is not '*'
+    Ignore 'features_to_exclude' if 'features_to_include' is not '*'
 
-    We also exclude from the features all grouping_cols, id_col_name, weights and dependent_variable
+    We also exclude from the features all grouping_col, id_col_name, weights and dependent_variable
     """
     # for some of the sets below we include the quoted name and the unquoted name
     #  to allow user to provide either form. Both forms are added in the exclusion
     #  list.
-    if grouping_cols:
-        group_set = set(split_quoted_delimited_str(grouping_cols))
+    if grouping_col:
+        group_set = set(split_quoted_delimited_str(grouping_col))
         group_set |= set(unquote_ident(i)
-                         for i in split_quoted_delimited_str(grouping_cols))
+                         for i in split_quoted_delimited_str(grouping_col))
     else:
         group_set = set()
     other_col_set = set([id_col_name, weights, dependent_variable])
     other_col_set |= set(unquote_ident(i)
                          for i in [id_col_name, weights, dependent_variable])
 
-    if list_of_features.strip() == '*':
+    if features_to_include.strip() == '*':
         all_col_set = set(get_cols(training_table_name, schema_madlib))
-        exclude_set = set(split_quoted_delimited_str(list_of_features_to_exclude))
+        exclude_set = set(split_quoted_delimited_str(features_to_exclude))
         feature_set = all_col_set - exclude_set
         filtered_feature_list = list(feature_set - group_set - other_col_set)
     else:
-        feature_list = split_quoted_delimited_str(list_of_features)
-        feature_exclude = split_quoted_delimited_str(list_of_features_to_exclude)
+        feature_list = split_quoted_delimited_str(features_to_include)
+        feature_exclude = split_quoted_delimited_str(features_to_exclude)
         return_set = set(feature_list) - set(feature_exclude) - group_set - other_col_set
         # instead of returning list(return_set) we create a list that has
         # elements in same order as original feature_list
@@ -251,7 +251,7 @@ def _extract_pruning_params(pruning_params_str):
 def _get_tree_states(schema_madlib, is_classification, split_criterion,
                      training_table_name, output_table_name, id_col_name,
                      dependent_variable, dep_is_bool,
-                     grouping_cols, cat_features, ordered_cat_features,
+                     grouping_col, cat_features, ordered_cat_features,
                      con_features, n_bins, boolean_cats,
                      min_split, min_bucket, weights,
                      max_depth, grp_key_to_cp, compute_cp_list=False,
@@ -262,7 +262,7 @@ def _get_tree_states(schema_madlib, is_classification, split_criterion,
                             for each group. For the no grouping case, the
                             key is ''
     """
-    filter_dep = _get_filter_str(dependent_variable, grouping_cols)
+    filter_dep = _get_filter_str(dependent_variable, grouping_col)
     if is_classification:
         # For classifications, we also need to map dependent_variable to integers
         n_rows, dep_list = _get_n_and_deplist(training_table_name,
@@ -292,7 +292,7 @@ def _get_tree_states(schema_madlib, is_classification, split_criterion,
 
     dep_n_levels = len(dep_list) if dep_list else 1
     cat_features_info_table = unique_string()
-    if not grouping_cols:   # non-grouping case
+    if not grouping_col:   # non-grouping case
         # 3)  Find the splitting bins, one dict containing two arrays:
         #       categorical bins and continuous bins
         bins = _get_bins(schema_madlib, training_table_name, cat_features,
@@ -312,7 +312,7 @@ def _get_tree_states(schema_madlib, is_classification, split_criterion,
         tree['cp'] = grp_key_to_cp[tree['grp_key']]
         tree_states = [tree]
     else:
-        grouping_array_str = get_grouping_array_str(training_table_name, grouping_cols)
+        grouping_array_str = get_grouping_array_str(training_table_name, grouping_col)
         with OptimizerControl(False):
             # we disable optimizer (ORCA) for platforms that use it
             #  since ORCA doesn't provide an easy way to disable hashagg
@@ -324,7 +324,7 @@ def _get_tree_states(schema_madlib, is_classification, split_criterion,
                                       cat_features, ordered_cat_features,
                                       con_features, n_bins,
                                       dep_var_str,
-                                      boolean_cats, grouping_cols,
+                                      boolean_cats, grouping_col,
                                       grouping_array_str, n_rows,
                                       is_classification, dep_n_levels,
                                       filter_dep, null_proxy)
@@ -368,10 +368,10 @@ def _get_tree_states(schema_madlib, is_classification, split_criterion,
 # -------------------------------------------------------------------------
 
 
-def get_grouping_array_str(table_name, grouping_cols, qualifier=None):
+def get_grouping_array_str(table_name, grouping_col, qualifier=None):
     """
     Args:
-        @param grouping_cols: list, List of columns used as grouping columns
+        @param grouping_col: list, List of columns used as grouping columns
     """
     def _col_to_text(col, col_type):
         qualifier_str = qualifier + "." if qualifier else ''
@@ -380,11 +380,11 @@ def get_grouping_array_str(table_name, grouping_cols, qualifier=None):
         else:
             return '({0}{1})::text'.format(qualifier_str, col)
 
-    grouping_cols_list = [col.strip() for col in grouping_cols.split(',')]
-    grouping_cols_and_types = [(c, get_expr_type(c, table_name))
-                               for c in grouping_cols_list]
+    grouping_col_list = [col.strip() for col in grouping_col.split(',')]
+    grouping_col_and_types = [(c, get_expr_type(c, table_name))
+                               for c in grouping_col_list]
     grouping_array_str = "array_to_string(array[{0}]::text[], ',')".format(
-        ','.join(_col_to_text(col, col_type) for col, col_type in grouping_cols_and_types))
+        ','.join(_col_to_text(col, col_type) for col, col_type in grouping_col_and_types))
     return grouping_array_str
 # ------------------------------------------------------------------------------
 
@@ -393,16 +393,16 @@ def get_grouping_array_str(table_name, grouping_cols, qualifier=None):
 # So it has some specific code for cv.
 def _build_tree(schema_madlib, is_classification, split_criterion,
                 training_table_name, output_table_name, id_col_name,
-                dependent_variable, dep_is_bool, list_of_features,
+                dependent_variable, dep_is_bool, features_to_include,
                 cat_features, ordered_cat_features,
-                boolean_cats, con_features, grouping_cols,
+                boolean_cats, con_features, grouping_col,
                 weights, max_depth, min_split, min_bucket, n_bins,
                 cp_table, max_n_surr=0, null_proxy=None,
                 msg_level="warning", n_folds=0, **kwargs):
 
     compute_cp_list = False
-    if grouping_cols:
-        grouping_array_str = get_grouping_array_str(cp_table, grouping_cols)
+    if grouping_col:
+        grouping_array_str = get_grouping_array_str(cp_table, grouping_col)
     else:
         grouping_array_str = "''::TEXT"
     sql = """SELECT
@@ -428,15 +428,15 @@ def _build_tree(schema_madlib, is_classification, split_criterion,
         # we need to let it know that right now it is called from CV.
         use_existing_tables = table_exists(output_table_name)  # create tables if it does not exist
         running_cv = True  # flag to indicate that cv fold ID needs to be included
-        _create_nonversioned_output_tables(list_of_features_to_exclude='',
+        _create_nonversioned_output_tables(features_to_exclude='',
                               **locals())
 # ------------------------------------------------------------------------------
 
 
 def tree_train(schema_madlib, training_table_name, output_table_name,
-               id_col_name, dependent_variable, list_of_features,
-               list_of_features_to_exclude, split_criterion,
-               grouping_cols, weights, max_depth,
+               id_col_name, dependent_variable, features_to_include,
+               features_to_exclude, split_criterion,
+               grouping_col, weights, max_depth,
                min_split, min_bucket, n_bins, pruning_params,
                null_handling_params, verbose_mode, model_repository_table,
                name, description, **kwargs):
@@ -448,14 +448,14 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
         @param output_table_name: str, model table name
         @param id_col_name: str, id column name to uniquely identify each row
         @param dependent_variable: str, dependent variable column name
-        @param list_of_features: str, Comma-separated list of feature column names,
+        @param features_to_include: str, Comma-separated list of feature column names,
                                         can also be '*' implying all columns
                                         except dependent_variable
-        @param list_of_features_to_exclude: str, features to exclude if '*' is used
+        @param features_to_exclude: str, features to exclude if '*' is used
         @param split_criterion: str, Impurity function to use for splitting:
                                   Classification: {'gini', 'entropy', 'misclass'}
                                   Regression: 'mse'
-        @param grouping_cols: str, List of grouping columns to group the data
+        @param grouping_col: str, List of grouping columns to group the data
         @param weights: str, Column name for weight for each tuple
         @param max_depth: int, Maximum depth of the tree
         @param min_split: int, Minimum tuples in a node before splitting it
@@ -509,8 +509,8 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
 
     with MinWarning(msg_level):
         # 1)
-        if not grouping_cols or not grouping_cols.strip():
-            grouping_cols = ''
+        if not grouping_col or not grouping_col.strip():
+            grouping_col = ''
         _tree_validate_args(**locals())
         # weights column has be to validated to be present,
         # hence default value allocation happens after the validation
@@ -568,14 +568,14 @@ def tree_train(schema_madlib, training_table_name, output_table_name,
 
 def _create_nonversioned_output_tables(schema_madlib, training_table_name, output_table_name,
                           tree_states, bins, split_criterion,
-                          id_col_name, dependent_variable, list_of_features,
-                          list_of_features_to_exclude,
+                          id_col_name, dependent_variable, features_to_include,
+                          features_to_exclude,
                           is_classification, n_all_rows, n_rows, dep_list, cp,
                           all_cols_types, cat_features_info_table,
-                          grouping_cols=None,
+                          grouping_col=None,
                           use_existing_tables=False, running_cv=False,
                           n_folds=0, null_proxy=None, **kwargs):
-    if not grouping_cols:
+    if not grouping_col:
         _create_result_table(
             schema_madlib, tree_states[0], bins['cat_origin'], bins['cat_n'],
             bins['cat_features'], bins['con_features'], output_table_name,
@@ -584,16 +584,16 @@ def _create_nonversioned_output_tables(schema_madlib, training_table_name, outpu
         _create_grp_result_table(
             schema_madlib, tree_states, bins, bins['cat_features'],
             bins['con_features'], output_table_name, cat_features_info_table,
-            grouping_cols, training_table_name, use_existing_tables,
+            grouping_col, training_table_name, use_existing_tables,
             running_cv, n_folds)
 
     failed_groups = sum(row['finished'] != 1 for row in tree_states)
     _create_summary_table(
         schema_madlib, split_criterion, training_table_name,
         output_table_name, id_col_name, bins['cat_features'], bins['con_features'],
-        dependent_variable, list_of_features, list_of_features_to_exclude,
+        dependent_variable, features_to_include, features_to_exclude,
         failed_groups, is_classification, n_all_rows,
-        n_rows, dep_list, all_cols_types, cp, grouping_cols, 1,
+        n_rows, dep_list, all_cols_types, cp, grouping_col, 1,
         use_existing_tables, n_folds, null_proxy)
 
 # -------------------------------------------------------------------------
@@ -880,15 +880,15 @@ def _filter_locals_dict(fields, **kwargs):
 def _create_versioned_output_tables(schema_madlib, training_table_name,
                                     output_table_name, tree_states, bins,
                                     split_criterion, id_col_name,
-                                    dependent_variable, list_of_features,
-                                    list_of_features_to_exclude,
+                                    dependent_variable, features_to_include,
+                                    features_to_exclude,
                                     is_classification, n_all_rows, n_rows,
                                     dep_list, cp, all_cols_types,
                                     cat_features_info_table,
                                     model_repository_table,
                                     start_training_time,
                                     end_training_time,
-                                    grouping_cols=None,
+                                    grouping_col=None,
                                     use_existing_tables=False,
                                     running_cv=False,
                                     n_folds=0, null_proxy=None,
@@ -937,7 +937,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     dependent_varname = dependent_variable
     independent_var_types = [all_cols_types[c]
         for c in cat_features+con_features]
-    independent_varnames = py_list_to_sql_string(
+    independent_varname = py_list_to_sql_string(
         map(quote_literal, cat_features+con_features),
         array_type='text', long_format=True)
     model_type = 'Decision Tree'
@@ -949,6 +949,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         'is_classification', 'id_col_name',
         'cat_features', 'con_features',
         'num_groups', 'num_failed_groups',
+        'features_to_include', 'features_to_exclude',
         'total_rows_processed', 'total_rows_skipped',
         'dependent_var_levels', 'dependent_var_type',
         'independent_var_types', 'input_cp', 'n_folds',
@@ -977,7 +978,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
 def _get_bins_grps(
         schema_madlib, training_table_name, cat_features, ordered_cat_features,
         con_features, n_bins, dependent_variable, boolean_cats,
-        grouping_cols, grouping_array_str, n_rows, is_classification,
+        grouping_col, grouping_array_str, n_rows, is_classification,
         dep_n_levels, filter_null_dep, null_proxy=None):
     """ Compute the bins for all features in each group
 
@@ -1032,13 +1033,13 @@ def _get_bins_grps(
                     ) src
                     JOIN
                     (
-                        SELECT {grouping_cols}, count(*) AS {grp_size_str}
+                        SELECT {grouping_col}, count(*) AS {grp_size_str}
                         FROM {training_table_name}
                         WHERE {filter_null_dep}
                             AND not {schema_madlib}.array_contains_null({con_features_str})
-                        GROUP BY {grouping_cols}
+                        GROUP BY {grouping_col}
                     ) grp_info
-                    USING ({grouping_cols})
+                    USING ({grouping_col})
                 ) subq
                 WHERE rand * {grp_size_str} <= {sample_size}
                 """.format(**locals())
@@ -1060,7 +1061,7 @@ def _get_bins_grps(
                     {con_split_str} AS con_splits,
                     {grouping_array_str} AS grp_key
                 FROM {sample_table_name}
-                GROUP BY {grouping_cols}
+                GROUP BY {grouping_col}
                 """.format(**locals())   # multiple rows
         )
 
@@ -1106,7 +1107,7 @@ def _get_bins_grps(
                             {{order_fun}} as dep_avg
                         FROM {training_table_name}
                         WHERE {filter_str}
-                        GROUP BY {{col}}, {grouping_cols}
+                        GROUP BY {{col}}, {grouping_col}
                     ) s
                     GROUP BY grp_key
                 ) s1
@@ -1388,7 +1389,7 @@ def _one_step(schema_madlib, training_table_name, cat_features,
 def _one_step_for_grps(
         schema_madlib, training_table_name, cat_features,
         con_features, boolean_cats, bins, n_bins, tree_states, weights,
-        grouping_cols, grouping_array_str, dep_var, min_split, min_bucket,
+        grouping_col, grouping_array_str, dep_var, min_split, min_bucket,
         max_depth, filter_null, dep_n_levels, subsample, n_random_features,
         cat_features_info_table, max_n_surr=0, null_proxy=None):
     """ One step of trees training with grouping support
@@ -1469,7 +1470,7 @@ def _one_step_for_grps(
                         ) AS needed_data
                     WHERE {grouping_array_str} = {grp_key}
                         AND {filter_null}
-                    GROUP BY {grouping_cols}
+                    GROUP BY {grouping_col}
                  ) s1
                 JOIN (  SELECT
                             grp_key,
@@ -1563,7 +1564,7 @@ def _one_step_for_grps(
 def _create_grp_result_table(
         schema_madlib, tree_states, bins, cat_features,
         con_features, output_table_name, cat_features_info_table,
-        grouping_cols,
+        grouping_col,
         training_table_name, use_existing_tables=False,
         running_cv=False, k=0):
     """ Create the output table for grouping case.
@@ -1588,7 +1589,7 @@ def _create_grp_result_table(
         header = "create table " + output_table_name + " as "
     sql = header + """
             SELECT
-                {grouping_cols},
+                {grouping_col},
                 {tree_state} AS model_data,
                 {cat_levels_val} AS cat_levels_in_text,
                 {cat_n_levels_val} AS cat_n_levels,
@@ -1599,10 +1600,10 @@ def _create_grp_result_table(
                 {fold}
             FROM (
                 SELECT
-                    {grouping_cols},
+                    {grouping_col},
                     {grouping_array_str} AS {grp_key}
                 FROM {training_table_name}
-                group by {grouping_cols}
+                group by {grouping_col}
             ) s1
             JOIN (
                 SELECT
@@ -1672,10 +1673,10 @@ def _get_dep_type(data_table, dep):
 def _create_summary_table(
         schema_madlib, split_criterion,
         training_table_name, output_table_name, id_col_name,
-        cat_features, con_features, dependent_variable, list_of_features,
-        list_of_features_to_exclude,
+        cat_features, con_features, dependent_variable, features_to_include,
+        features_to_exclude,
         num_failed_groups, is_classification, n_all_rows, n_rows,
-        dep_list, all_cols_types, cp, grouping_cols=None, n_groups=1,
+        dep_list, all_cols_types, cp, grouping_col=None, n_groups=1,
         use_existing_tables=False, n_folds=0, null_proxy=None):
 
     output_table_summary = add_postfix(output_table_name, "_summary")
@@ -1701,17 +1702,17 @@ def _create_summary_table(
         map(quote_literal, indep_var_types),
         array_type='text',
         long_format=True)
-    independent_varnames = py_list_to_sql_string(
+    independent_varname = py_list_to_sql_string(
         map(quote_literal, cat_features+con_features),
         array_type='text', long_format=True)
     cat_features_array = py_list_to_sql_string(
         map(quote_literal, cat_features), array_type='text', long_format=True)
     con_features_array = py_list_to_sql_string(
         map(quote_literal, con_features), array_type='text', long_format=True)
-    if grouping_cols:
-        grouping_cols_str = "'{0}'".format(grouping_cols)
+    if grouping_col:
+        grouping_col_str = "'{0}'".format(grouping_col)
     else:
-        grouping_cols_str = "NULL"
+        grouping_col_str = "NULL"
     n_rows_skipped = n_all_rows - n_rows
 
     if isinstance(cp, Iterable):
@@ -1732,13 +1733,13 @@ def _create_summary_table(
                 '{training_table_name}'::text  AS source_table,
                 '{output_table_name}'::text    AS model_table,
                 '{id_col_name}'::text          AS id_col_name,
-                '{list_of_features}'::text     AS list_of_features,
-                '{list_of_features_to_exclude}'::text     AS list_of_features_to_exclude,
+                '{features_to_include}'::text     AS features_to_include,
+                '{features_to_exclude}'::text     AS features_to_exclude,
                 '{dependent_variable}'::text   AS dependent_varname,
-                {independent_varnames}         AS independent_varnames,
+                {independent_varname}         AS independent_varname,
                 {cat_features_array}           AS cat_features,
                 {con_features_array}           AS con_features,
-                {grouping_cols_str}::text      AS grouping_cols,
+                {grouping_col_str}::text      AS grouping_col,
                 {n_groups}::integer            AS num_all_groups,
                 {num_failed_groups}::integer   AS num_failed_groups,
                 {n_rows}::integer              AS total_rows_processed,
@@ -1754,13 +1755,13 @@ def _create_summary_table(
 # ------------------------------------------------------------
 
 
-def _get_filter_str(dependent_variable, grouping_cols):
+def _get_filter_str(dependent_variable, grouping_col):
     """ Return a 'WHERE' clause string that filters out all rows that contain a
     NULL.
     """
-    if grouping_cols:
+    if grouping_col:
         group_filter = ' and '.join('({0}) is not NULL'.format(g.strip())
-                                    for g in grouping_cols.split(','))
+                                    for g in grouping_col.split(','))
     else:
         group_filter = None
     dep_filter = '(' + dependent_variable + ") is not NULL"
@@ -1848,10 +1849,10 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
     # obtain the cat_features and con_features from model summary table
     summary_elements = plpy.execute("SELECT * FROM {0}".format(model_summary))[0]
 
-    list_of_features = summary_elements["independent_varnames"]
+    features_to_include = summary_elements["independent_varname"]
     cat_features = summary_elements["cat_features"]
     con_features = summary_elements["con_features"]
-    _assert(is_var_valid(source, ','.join(list_of_features)),
+    _assert(is_var_valid(source, ','.join(features_to_include)),
             "Decision tree error: Missing columns in predict data table ({0}) "
             "that were used during training".format(source))
     id_col_name = summary_elements["id_col_name"]
@@ -1860,7 +1861,7 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
     dep_type = summary_elements['dependent_var_type']
     is_classification = summary_elements["is_classification"]
     # optional variables, default value is None
-    grouping_cols_str = summary_elements.get("grouping_cols")
+    grouping_col_str = summary_elements.get("grouping_col")
     null_proxy = summary_elements.get('null_proxy')
 
     # find which columns are of type boolean
@@ -1879,11 +1880,11 @@ def tree_predict(schema_madlib, model, source, output, pred_type='response',
         header = "CREATE TABLE " + output + " AS "
         use_fold = ''
 
-    if not grouping_cols_str:
+    if not grouping_col_str:
         using_str = ""
         join_str = ","
     else:
-        using_str = "USING ( " + grouping_cols_str + ")"
+        using_str = "USING ( " + grouping_col_str + ")"
         join_str = "LEFT OUTER JOIN"
 
     pred_name = ('"prob_{0}"' if pred_type == "prob" else
@@ -2006,13 +2007,13 @@ def tree_display(schema_madlib, model_table, dot_format=True, verbose=False,
     cat_features_str = summary['cat_features']
     con_features_str = summary['con_features']
 
-    grouping_cols = summary["grouping_cols"]
-    grouping_cols = '' if grouping_cols is None else grouping_cols + ','
-    grouped_trees = plpy.execute("SELECT {grouping_cols} "
+    grouping_col = summary["grouping_col"]
+    grouping_col = '' if grouping_col is None else grouping_col + ','
+    grouped_trees = plpy.execute("SELECT {grouping_col} "
                                  "model_data as tree, cat_levels_in_text, cat_n_levels "
                                  "FROM {model_table}".
                                  format(model_table=model_table,
-                                        grouping_cols=grouping_cols))
+                                        grouping_col=grouping_col))
 
     return_str_list = []
     if not disp_surr:
@@ -2155,9 +2156,9 @@ def _compute_var_importance(schema_madlib, tree,
 
 def _xvalidate(schema_madlib, tree_states, training_table_name, output_table_name,
                id_col_name, dependent_variable,
-               list_of_features, list_of_features_to_exclude,
+               features_to_include, features_to_exclude,
                cat_features, ordered_cat_features, boolean_cats, con_features,
-               split_criterion, grouping_cols, weights, max_depth,
+               split_criterion, grouping_col, weights, max_depth,
                min_split, min_bucket, n_bins, is_classification,
                dep_is_bool, dep_n_levels, n_folds, n_rows,
                max_n_surr, null_proxy, msg_level='warning', **kwargs):
@@ -2173,7 +2174,7 @@ def _xvalidate(schema_madlib, tree_states, training_table_name, output_table_nam
     # 1) create group_to_param_list_table for CV
     group_to_param_list_table = unique_string()
     param_list_name = unique_string()
-    if not grouping_cols:
+    if not grouping_col:
         plan = plpy.prepare("""
                 CREATE TEMP TABLE {group_to_param_list_table} AS
                 SELECT $1 AS {param_list_name}
@@ -2191,12 +2192,12 @@ def _xvalidate(schema_madlib, tree_states, training_table_name, output_table_nam
             plpy.notice("{0} -> {1}".format(tree['grp_key'], str(tree['cp_list'])))
 
         grouping_array_str = get_grouping_array_str(training_table_name,
-                                                    grouping_cols)
+                                                    grouping_col)
         grp_key_str = unique_string()
         plan = plpy.prepare("""
                 CREATE TEMP TABLE {group_to_param_list_table} AS
                 SELECT
-                    {grouping_cols},
+                    {grouping_col},
                     {param_list_name}
                 FROM
                 (
@@ -2212,20 +2213,20 @@ def _xvalidate(schema_madlib, tree_states, training_table_name, output_table_nam
                 JOIN
                 (
                     SELECT
-                        {grouping_cols},
+                        {grouping_col},
                         {grouping_array_str} as {grp_key_str}
                     FROM {training_table_name}
-                ) grp_key_to_grouping_cols
+                ) grp_key_to_grouping_col
                 USING ({grp_key_str})
                 """.format(**locals()), ["text[]", "float8[]"])
         plpy.execute(plan, [grp_list, cp_list])
 
     # 2) call CV function to actually cross-validate _build_tree
-    # expects output table model_cv({grouping_cols), cp, avg, stddev)
+    # expects output table model_cv({grouping_col), cp, avg, stddev)
     model_cv = output_table_name + "_cv"
     metric_function = "_tree_misclassified" if is_classification else "_tree_rmse"
     pred_name = '"estimated_{0}"'.format(dependent_variable.strip(' "'))
-    grouping_str = 'NULL' if not grouping_cols else '"' + grouping_cols + '"'
+    grouping_str = 'NULL' if not grouping_col else '"' + grouping_col + '"'
 
     all_features = [cat_features, ordered_cat_features, boolean_cats, con_features]
 
@@ -2247,26 +2248,26 @@ def _xvalidate(schema_madlib, tree_states, training_table_name, output_table_nam
         schema_madlib + "." + metric_function,
         xvalidate_params[4],
         xvalidate_params[5],
-        group_to_param_list_table, param_list_name, grouping_cols,
+        group_to_param_list_table, param_list_name, grouping_col,
         training_table_name, id_col_name, False,
         model_cv, 'cp', None, n_folds,
         add_param_quotes=False)
 
     # 3) find the best cp for each group from table {model_cv}
-    if not grouping_cols:
+    if not grouping_col:
         grouping_array_str_comma = "''::TEXT AS grp_key,"
         group_by_str = ''
         qualified_group_by_str = ''
         group_select_str = ''
     else:
         grouping_array_qualified_str = get_grouping_array_str(training_table_name,
-                                                              grouping_cols,
+                                                              grouping_col,
                                                               qualifier="min_cv_error")
         grouping_array_str_comma = grouping_array_qualified_str + " AS grp_key,"
-        grouping_cols_list = grouping_cols.split(",")
-        qualified_group_by_str = "GROUP BY " + ','.join("min_cv_error." + i for i in grouping_cols_list)
-        group_by_str = "GROUP BY " + grouping_cols
-        group_select_str = grouping_cols + ","
+        grouping_col_list = grouping_col.split(",")
+        qualified_group_by_str = "GROUP BY " + ','.join("min_cv_error." + i for i in grouping_col_list)
+        group_by_str = "GROUP BY " + grouping_col
+        group_select_str = grouping_col + ","
 
     plpy.notice(str(list(plpy.execute("SELECT * FROM {0}".format(model_cv)))))
     validation_result_query = """
@@ -2366,7 +2367,7 @@ def _get_xvalidate_params(**kwargs):
                        quoted_args['id_col_name'],
                        quoted_args['dependent_variable'],
                        quoted_args['dep_is_bool'],
-                       quoted_args['list_of_features'],
+                       quoted_args['features_to_include'],
                        all_feature_str[0],
                        all_feature_str[1],
                        all_feature_str[2],
@@ -2392,7 +2393,7 @@ def _get_xvalidate_params(**kwargs):
                      "%prediction%",
                      quoted_args['pred_name'],
                      quoted_args['id_col_name'],
-                     quoted_args['grouping_cols'],
+                     quoted_args['grouping_col'],
                      "%error%",
                      "True"]
     metric_param_types = ["VARCHAR", "VARCHAR", "VARCHAR", "VARCHAR",
@@ -2446,7 +2447,7 @@ def _tree_train_using_bins(
 def _tree_train_grps_using_bins(
         schema_madlib, bins, training_table_name,
         cat_features, con_features, boolean_cats, n_bins, weights,
-        grouping_cols, grouping_array_str,
+        grouping_col, grouping_array_str,
         dep_var_str, min_split, min_bucket, max_depth, filter_dep,
         dep_n_levels, is_classification, split_criterion,
         cat_features_info_table,
@@ -2491,7 +2492,7 @@ def _tree_train_grps_using_bins(
         tree_states = _one_step_for_grps(
             schema_madlib, training_table_name, cat_features,
             con_features, boolean_cats, bins, n_bins,
-            tree_states, weights, grouping_cols,
+            tree_states, weights, grouping_col,
             grouping_array_str, dep_var_str, min_split, min_bucket,
             max_depth, filter_dep, dep_n_levels, subsample,
             n_random_features, cat_features_info_table,
@@ -2504,7 +2505,7 @@ def _tree_train_grps_using_bins(
 
 
 def _tree_error(schema_madlib, source_table, dependent_varname,
-                prediction_table, pred_dep_name, id_col_name, grouping_cols,
+                prediction_table, pred_dep_name, id_col_name, grouping_col,
                 output_table, is_classification,
                 use_existing_tables=False, k=0, **kwargs):
     with MinWarning("warning"):
@@ -2528,8 +2529,8 @@ def _tree_error(schema_madlib, source_table, dependent_varname,
                         )
                     )
                 """.format(**locals())
-        grouping_str = '' if not grouping_cols else "GROUP BY " + grouping_cols
-        grouping_col_str = '' if not grouping_cols else grouping_cols + ','
+        grouping_str = '' if not grouping_col else "GROUP BY " + grouping_col
+        grouping_col_str = '' if not grouping_col else grouping_col + ','
 
         sql = header + """
             SELECT
@@ -2569,17 +2570,17 @@ SELECT {schema_madlib}.tree_train(
     'output_table',         -- Table name to store the tree model
     'id_col_name',          -- Row ID, used in tree_predict
     'dependent_variable',   -- The column to fit
-    'list_of_features',     -- Comma separated column names to be
+    'features_to_include',     -- Comma separated column names to be
                                 used as the predictors, can be '*'
                                 to include all columns except the
                                 dependent_variable
     'features_to_exclude',  -- Comma separated column names to be
-                                excluded if list_of_features is '*'
+                                excluded if features_to_include is '*'
     'split_criterion',      -- How to split a node, options are
                                 'gini', 'misclassification' and
                                 'entropy' for classification, and
                                 'mse' for regression.
-    'grouping_cols',        -- Comma separated column names used to
+    'grouping_col',        -- Comma separated column names used to
                                 group the data. A decision tree model
                                 will be created for each group. Default
                                 is NULL
@@ -2616,7 +2617,7 @@ SELECT {schema_madlib}.tree_train(
 The output table ('output_table' above) has the following columns (quoted items
 are of type TEXT):
     <grouping columns>      -- Grouping columns, only present when
-                                'grouping_cols' is not NULL or ''
+                                'grouping_col' is not NULL or ''
     tree                    -- The decision tree model as a binary string
     cat_levels_in_text      -- Distinct levels (casted to text) of all
                                 categorical variables combined in a single array
@@ -2633,10 +2634,10 @@ The output summary table ('output_table_summary') has the following columns:
     'id_col_name'           -- Name of the 'id' column
     is_classification       -- Boolean value indicating if tree is classification or regression
     'dependent_varname'     -- Response variable column name
-    'independent_varnames'  -- Comma-separated feature column names
+    'independent_varname'  -- Comma-separated feature column names
     'cat_features'          -- Comma-separated column names of categorical variables
     'con_features'          -- Comma-separated column names of continuous variables
-    'grouping_cols'         -- Grouping column names
+    'grouping_col'         -- Grouping column names
     num_all_groups          -- Number of groups
     num_failed_groups       -- Number of groups for which training failed
     total_rows_processed    -- Number of rows used in the model training

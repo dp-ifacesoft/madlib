@@ -47,10 +47,10 @@ tree_train(
     output_table_name,
     id_col_name,
     dependent_variable,
-    list_of_features,
-    list_of_features_to_exclude,
+    features_to_include,
+    features_to_exclude,
     split_criterion,
-    grouping_cols,
+    grouping_col,
     weights,
     max_depth,
     min_split,
@@ -89,7 +89,7 @@ tree_train(
   time and space complexity of the training function increases linearly as the
   number of response classes increases.</DD>
 
-  <DT>list_of_features</DT>
+  <DT>features_to_include</DT>
   <DD>TEXT. Comma-separated string of column names or expressions to use as predictors.
   Can also be a '*' implying all columns are to be used as predictors (except for the
   ones included in the next argument that lists exclusions).
@@ -109,7 +109,7 @@ tree_train(
   by their value.
   </DD>
 
-  <DT>list_of_features_to_exclude</DT>
+  <DT>features_to_exclude</DT>
   <DD>TEXT. Comma-separated string of column names to exclude from the predictors
       list. If the <em>dependent_variable</em> is an expression (including cast of a column name),
       then this list should include the columns present in the
@@ -127,7 +127,7 @@ tree_train(
   the input for this argument.
   Refer to reference [1] for more information on impurity measures.</DD>
 
-  <DT>grouping_cols (optional)</DT>
+  <DT>grouping_col (optional)</DT>
   <DD>TEXT, default: NULL. Comma-separated list of column names to group the
       data by. This will produce multiple decision trees, one for
       each group. </DD>
@@ -254,7 +254,7 @@ tree_train(
       <tr>
         <th>&lt;...&gt;</th>
         <td>Grouping columns, if provided as input, in the same types as the training table.
-        This could be multiple columns depending on the \c grouping_cols input.</td>
+        This could be multiple columns depending on the \c grouping_col input.</td>
       </tr>
       <tr>
         <th>tree</th>
@@ -265,7 +265,7 @@ tree_train(
         <th>cat_levels_in_text</th>
         <td>TEXT[]. Ordered levels (values) of categorical variables
         corresponding to the categorical features in
-        the 'list_of_features' argument above.  Used to help
+        the 'features_to_include' argument above.  Used to help
         interpret the trained decision tree.  For example, if the
         categorical features specified are <em>weather_outlook</em>
         and <em>windy</em> in that order, then 'cat_levels_in_text'
@@ -284,7 +284,7 @@ tree_train(
       <th>impurity_var_importance</th>
       <td>DOUBLE PRECISION[]. Impurity importance of each variable.
       The order of the variables is the same as
-      that of the 'independent_varnames' column in the summary table (see below).
+      that of the 'independent_varname' column in the summary table (see below).
 
       The impurity importance of any feature is the decrease in impurity by a
       node containing the feature as a primary split, summed over the whole
@@ -344,13 +344,13 @@ tree_train(
     </tr>
 
     <tr>
-    <th>list_of_features</th>
-    <td>TEXT. The list_of_features inputed to the 'tree_train' procedure.</td>
+    <th>features_to_include</th>
+    <td>TEXT. The features_to_include inputed to the 'tree_train' procedure.</td>
     </tr>
 
     <tr>
-    <th>list_of_features_to_exclude</th>
-    <td>TEXT. The list_of_features_to_exclude inputed to the 'tree_train' procedure.</td>
+    <th>features_to_exclude</th>
+    <td>TEXT. The features_to_exclude inputed to the 'tree_train' procedure.</td>
     </tr>
 
     <tr>
@@ -359,7 +359,7 @@ tree_train(
     </tr>
 
     <tr>
-    <th>independent_varnames</th>
+    <th>independent_varname</th>
     <td>TEXT. The independent variables. These are the features used in the
     training of the decision tree.</td>
     </tr>
@@ -375,7 +375,7 @@ tree_train(
     </tr>
 
     <tr>
-    <th>grouping_cols</th>
+    <th>grouping_col</th>
     <td>TEXT. Names of grouping columns.</td>
     </tr>
 
@@ -712,13 +712,13 @@ is_classification           | t
 source_table                | dt_golf
 model_table                 | train_output
 id_col_name                 | id
-list_of_features            | "OUTLOOK", temperature, windy
-list_of_features_to_exclude | None
+features_to_include            | "OUTLOOK", temperature, windy
+features_to_exclude | None
 dependent_varname           | class
-independent_varnames        | "OUTLOOK",windy,temperature
+independent_varname        | "OUTLOOK",windy,temperature
 cat_features                | "OUTLOOK",windy
 con_features                | temperature
-grouping_cols               |
+grouping_col               |
 num_all_groups              | 1
 num_failed_groups           | 0
 total_rows_processed        | 14
@@ -1133,13 +1133,13 @@ is_classification           | f
 source_table                | mt_cars
 model_table                 | train_output
 id_col_name                 | id
-list_of_features            | *
-list_of_features_to_exclude | id, hp, drat, am, gear, carb
+features_to_include            | *
+features_to_exclude | id, hp, drat, am, gear, carb
 dependent_varname           | mpg
-independent_varnames        | vs,cyl,disp,qsec,wt
+independent_varname        | vs,cyl,disp,qsec,wt
 cat_features                | vs,cyl
 con_features                | disp,qsec,wt
-grouping_cols               |
+grouping_col               |
 num_all_groups              | 1
 num_failed_groups           | 0
 total_rows_processed        | 32
@@ -1390,13 +1390,13 @@ is_classification           | t
 source_table                | null_handling_example
 model_table                 | train_output
 id_col_name                 | id
-list_of_features            | country, weather, city
-list_of_features_to_exclude | None
+features_to_include            | country, weather, city
+features_to_exclude | None
 dependent_varname           | response
-independent_varnames        | country,weather,city
+independent_varname        | country,weather,city
 cat_features                | country,weather,city
 con_features                |
-grouping_cols               | [NULL]
+grouping_col               | [NULL]
 num_all_groups              | 1
 num_failed_groups           | 0
 total_rows_processed        | 4
@@ -1510,14 +1510,14 @@ File decision_tree.sql_in documenting the training function
   *        output for training. Boolean, integer and text are
   *        considered classification outputs, while float values
   *        are considered regression outputs.
-  * @param list_of_features List of column names (comma-separated string)
+  * @param features_to_include List of column names (comma-separated string)
   *        to use as predictors. Can also be a ‘*’ implying all columns
   *        are to be used as predictors (except the ones included in
   *        the next argument). Boolean, integer, and text columns are
   *        considered categorical columns.
-  * @param list_of_features_to_exclude OPTIONAL. List of column names
+  * @param features_to_exclude OPTIONAL. List of column names
   *        (comma-separated string) to exlude from the predictors list.
-  * @param grouping_cols OPTIONAL. List of column names (comma-separated
+  * @param grouping_col OPTIONAL. List of column names (comma-separated
   *        string) to group the data by. This will lead to creating
   *        multiple decision trees, one for each group.
   * @param weights OPTIONAL. Column name containing weights for
@@ -1566,10 +1566,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1586,8 +1586,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     with AOControl(False):
         decision_tree.tree_train(
           schema_madlib, training_table_name, output_table_name, id_col_name,
-          dependent_variable, list_of_features, list_of_features_to_exclude,
-          split_criterion, grouping_cols, weights, max_depth, min_split,
+          dependent_variable, features_to_include, features_to_exclude,
+          split_criterion, grouping_col, weights, max_depth, min_split,
           min_bucket, n_bins, pruning_params, null_handling_params,
           verbose_mode, model_repository_table, name, description)
 $$ LANGUAGE plpythonu VOLATILE
@@ -1601,10 +1601,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1628,10 +1628,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1654,10 +1654,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1679,10 +1679,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1704,10 +1704,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1726,10 +1726,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1748,10 +1748,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1769,10 +1769,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER
@@ -1789,10 +1789,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER
 ) RETURNS VOID AS $$
@@ -1808,10 +1808,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     weights                     TEXT
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -1826,10 +1826,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT,
-    grouping_cols               TEXT
+    grouping_col               TEXT
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8,
         NULL::TEXT, NULL::INTEGER, NULL::INTEGER,
@@ -1843,8 +1843,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
     split_criterion             TEXT
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7,
@@ -1859,8 +1859,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT,
-    list_of_features_to_exclude TEXT
+    features_to_include            TEXT,
+    features_to_exclude TEXT
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6,
         NULL::TEXT, NULL::TEXT, NULL::TEXT, NULL::INTEGER,
@@ -1874,7 +1874,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    list_of_features            TEXT
+    features_to_include            TEXT
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5,
         NULL::TEXT, NULL::TEXT, NULL::TEXT, NULL::TEXT,
@@ -1912,12 +1912,12 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__build_tree(
     id_col_name           TEXT,
     dependent_variable    TEXT,
     dep_is_bool           BOOLEAN,
-    list_of_features      TEXT,
+    features_to_include      TEXT,
     cat_features          VARCHAR[],
     ordered_cat_features  VARCHAR[],
     boolean_cats          VARCHAR[],
     con_features          VARCHAR[],
-    grouping_cols         TEXT,
+    grouping_col         TEXT,
     weights               TEXT,
     max_depth             INTEGER,
     min_split             INTEGER,
@@ -2543,13 +2543,13 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._tree_rmse(
     prediction_table       VARCHAR,
     pred_dep_name          VARCHAR,
     id_col_name            VARCHAR,
-    grouping_cols          TEXT,
+    grouping_col          TEXT,
     output_table           VARCHAR
 ) RETURNS VOID AS $$
     PythonFunctionBodyOnly(recursive_partitioning, decision_tree)
     with AOControl(False):
         decision_tree._tree_error(schema_madlib, source_table, dependent_varname,
-                                  prediction_table, pred_dep_name, id_col_name, grouping_cols,
+                                  prediction_table, pred_dep_name, id_col_name, grouping_col,
                                   output_table, False)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
@@ -2560,7 +2560,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._tree_rmse(
     prediction_table       VARCHAR,
     pred_dep_name          VARCHAR,
     id_col_name            VARCHAR,
-    grouping_cols          TEXT,
+    grouping_col          TEXT,
     output_table           VARCHAR,
     use_existing_tables    BOOLEAN,
     k                      INTEGER
@@ -2568,7 +2568,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._tree_rmse(
     PythonFunctionBodyOnly(recursive_partitioning, decision_tree)
     with AOControl(False):
         decision_tree._tree_error(schema_madlib, source_table, dependent_varname,
-                                  prediction_table, pred_dep_name, id_col_name, grouping_cols,
+                                  prediction_table, pred_dep_name, id_col_name, grouping_col,
                                   output_table, False, use_existing_tables, k)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
@@ -2581,14 +2581,14 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._tree_misclassified(
     prediction_table       VARCHAR,
     pred_dep_name          VARCHAR,
     id_col_name            VARCHAR,
-    grouping_cols          TEXT,
+    grouping_col          TEXT,
     output_table           VARCHAR
 ) RETURNS VOID AS $$
     PythonFunctionBodyOnly(recursive_partitioning, decision_tree)
     with AOControl(False):
         decision_tree._tree_error(schema_madlib, source_table, dependent_varname,
                                   prediction_table, pred_dep_name, id_col_name,
-                                  grouping_cols, output_table, True)
+                                  grouping_col, output_table, True)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -2598,7 +2598,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._tree_misclassified(
     prediction_table       VARCHAR,
     pred_dep_name          VARCHAR,
     id_col_name            VARCHAR,
-    grouping_cols          TEXT,
+    grouping_col          TEXT,
     output_table           VARCHAR,
     use_existing_tables    BOOLEAN,
     k                      INTEGER
@@ -2607,7 +2607,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._tree_misclassified(
     with AOControl(False):
         decision_tree._tree_error(schema_madlib, source_table, dependent_varname,
                                   prediction_table, pred_dep_name, id_col_name,
-                                  grouping_cols, output_table, True,
+                                  grouping_col, output_table, True,
                                   use_existing_tables, k)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');

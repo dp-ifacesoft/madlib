@@ -82,7 +82,7 @@ SELECT {schema_madlib}.forest_train(
                                 dependent_variable
     'features_to_exclude',  -- Comma separated column names to be
                                 excluded if list_of_features is '*'
-    'grouping_cols',        -- Comma separated column names used to
+    'grouping_col',        -- Comma separated column names used to
                                 group the data. A random forest model
                                 will be created for each group. Default
                                 is NULL
@@ -137,10 +137,10 @@ columns:
     'model_table'           -- Tree model table name
     'id_col_name'           -- The ID column name
     'dependent_varname'     -- Response variable column name
-    'independent_varnames'  -- Comma-separated feature column names
+    'independent_varname'  -- Comma-separated feature column names
     'cat_features'          -- Comma-separated column names of categorical variables
     'con_features'          -- Comma-separated column names of continuous variables
-    'grouping_cols'         -- Grouping column names
+    'grouping_col'         -- Grouping column names
     num_trees               -- Number of trees grown by the model
     num_random_features     -- Number of features randomly selected for each split.
     max_tree_depth          -- Maximum depth of any node.
@@ -170,7 +170,7 @@ it has the following columns:
                                 of grouping column values.
     <...>                   -- Grouping columns, if provided in input. Same type as
                                 in the training data table. This could be multiple
-                                columns depending on the grouping_cols input.
+                                columns depending on the grouping_col input.
     success                 -- Boolean, indicator of the success of the group.
     cat_levels_in_text      -- text[]. Ordered levels of categorical variables.
     cat_n_levels            -- integer[]. Number of levels for each categorical variable.
@@ -191,7 +191,7 @@ it has the following columns:
 def forest_train(
         schema_madlib, training_table_name, output_table_name, id_col_name,
         dependent_variable, list_of_features, list_of_features_to_exclude,
-        grouping_cols, num_trees, num_random_features,
+        grouping_col, num_trees, num_random_features,
         importance, num_permutations, max_tree_depth,
         min_split, min_bucket, num_bins,
         null_handling_params, verbose=False, sample_ratio=None, **kwargs):
@@ -207,7 +207,7 @@ def forest_train(
                                         can also be '*' implying all columns
                                         except dependent_variable
         @param list_of_features_to_exclude: str, features to exclude if '*' is used
-        @param grouping_cols: str, List of grouping columns to group the data
+        @param grouping_col: str, List of grouping columns to group the data
         @param num_trees: int, Number of trees in the forest
         @param num_random_features: int, Number of random features used in spliting nodes
         @param importance: boolean, Whether or not to calculate variable importance
@@ -229,8 +229,8 @@ def forest_train(
                 # we disable hashagg since large number of groups could
                 # result in excessive memory usage.
                 # set default values
-                if grouping_cols is not None and grouping_cols.strip() == '':
-                    grouping_cols = None
+                if grouping_col is not None and grouping_col.strip() == '':
+                    grouping_col = None
                 num_trees = 100 if num_trees is None else num_trees
                 max_tree_depth = 10 if max_tree_depth is None else max_tree_depth
                 min_split = 20 if min_split is None and min_bucket is None else min_split
@@ -256,7 +256,7 @@ def forest_train(
                 # validate arguments
                 _forest_validate_args(training_table_name, output_table_name, id_col_name,
                                       list_of_features, dependent_variable,
-                                      list_of_features_to_exclude, grouping_cols,
+                                      list_of_features_to_exclude, grouping_col,
                                       num_trees, num_random_features,
                                       num_permutations, max_tree_depth,
                                       min_split, min_bucket, num_bins, sample_ratio)
@@ -270,7 +270,7 @@ def forest_train(
                                                 list_of_features_to_exclude,
                                                 id_col_name,
                                                 '1', dependent_variable,
-                                                grouping_cols)
+                                                grouping_col)
 
                 _assert(bool(features),
                         "Random forest error: No feature is selected for the model.")
@@ -293,7 +293,7 @@ def forest_train(
                 cat_features, ordered_cat_features, boolean_cats, con_features = \
                     _classify_features(all_cols_types, features)
 
-                filter_null = _get_filter_str(dependent_variable, grouping_cols)
+                filter_null = _get_filter_str(dependent_variable, grouping_col)
                 # the total number of records
                 n_all_rows = plpy.execute("SELECT count(*) FROM {0}".
                                           format(training_table_name))[0]['count']
@@ -330,7 +330,7 @@ def forest_train(
                 # a table that maps gid/grp_key to actual columns
                 grp_key_to_grp_cols = unique_string()
                 # create the above table and perform binning
-                if grouping_cols is None:
+                if grouping_col is None:
                     sql_grp_key_to_grp_cols = """
                             CREATE TABLE {grp_key_to_grp_cols} AS
                             SELECT ''::text AS grp_key, 1 AS gid
@@ -351,17 +351,17 @@ def forest_train(
                     bins['grp_key_cat'] = ['']
                 else:
                     grouping_array_str = get_grouping_array_str(
-                        training_table_name, grouping_cols)
-                    grouping_cols_str = ('' if grouping_cols is None
-                                         else grouping_cols + ",")
+                        training_table_name, grouping_col)
+                    grouping_col_str = ('' if grouping_col is None
+                                         else grouping_col + ",")
                     sql_grp_key_to_grp_cols = """
                             CREATE TABLE {grp_key_to_grp_cols} AS
                             SELECT
-                                {grouping_cols},
+                                {grouping_col},
                                 {grouping_array_str} AS grp_key,
                                 (row_number() over ())::integer AS gid
                             FROM {training_table_name}
-                            GROUP BY {grouping_cols}
+                            GROUP BY {grouping_col}
                             """.format(**locals())
                     plpy.notice("sql_grp_key_to_grp_cols:\n" + sql_grp_key_to_grp_cols)
                     plpy.execute(sql_grp_key_to_grp_cols)
@@ -374,7 +374,7 @@ def forest_train(
                     bins = _get_bins_grps(schema_madlib, training_table_name,
                                           cat_features, ordered_cat_features,
                                           con_features, num_bins, dep,
-                                          boolean_cats, grouping_cols,
+                                          boolean_cats, grouping_col,
                                           grouping_array_str, n_rows,
                                           is_classification, dep_n_levels,
                                           filter_null, null_proxy)
@@ -386,7 +386,7 @@ def forest_train(
 
                 con_splits_table = unique_string()
                 _create_con_splits_table(schema_madlib, con_splits_table,
-                                         grouping_cols, grp_key_to_grp_cols, bins)
+                                         grouping_col, grp_key_to_grp_cols, bins)
 
                 ##################################################################
                 # create views and tables for training (growing) of trees
@@ -496,7 +496,7 @@ def forest_train(
                         dup_cnt: {dup_cnt}.
                         """.format(**locals()))
 
-                    if not grouping_cols:
+                    if not grouping_col:
                         tree = _tree_train_using_bins(
                             schema_madlib, bins, src_view, cat_features, con_features,
                             boolean_cats, num_bins, 'poisson_count', dep, min_split,
@@ -514,7 +514,7 @@ def forest_train(
                     else:
                         tree_states = _tree_train_grps_using_bins(
                             schema_madlib, bins, src_view, cat_features, con_features,
-                            boolean_cats, num_bins, 'poisson_count', grouping_cols,
+                            boolean_cats, num_bins, 'poisson_count', grouping_col,
                             grouping_array_str, dep, min_split, min_bucket,
                             max_tree_depth, filter_null, dep_n_levels,
                             is_classification, split_criterion,
@@ -539,13 +539,13 @@ def forest_train(
 
                     _insert_into_result_table(
                         schema_madlib, tree_states, output_table_name, impurity_imp_table,
-                        grp_key_to_grp_cols, sample_id, importance, grouping_cols)
+                        grp_key_to_grp_cols, sample_id, importance, grouping_col)
 
                     _calculate_oob_prediction(
                         schema_madlib, output_table_name, cat_features_info_table,
                         con_splits_table, oob_prediction_table, oob_view,
                         sample_id, id_col_name, cat_features, con_features,
-                        training_table_name, grouping_cols, grp_key_to_grp_cols, dep,
+                        training_table_name, grouping_col, grp_key_to_grp_cols, dep,
                         num_permutations, is_classification, importance,
                         num_bins, filter_null, null_proxy)
 
@@ -571,7 +571,7 @@ def forest_train(
                                     importance_table,
                                     cat_features_info_table,
                                     grp_key_to_grp_cols,
-                                    grouping_cols,
+                                    grouping_col,
                                     tree_terminated)
 
                 num_failed_groups = sum(1 for v in tree_terminated.values() if v != 1)
@@ -627,7 +627,7 @@ def forest_predict(schema_madlib, model, source, output,
     cat_features = split_quoted_delimited_str(summary_elements["cat_features"])
     con_features = split_quoted_delimited_str(summary_elements["con_features"])
     id_col_name = summary_elements["id_col_name"]
-    grouping_cols = summary_elements.get("grouping_cols")  # optional, default = None
+    grouping_col = summary_elements.get("grouping_col")  # optional, default = None
     dep_varname = summary_elements["dependent_varname"]
     dep_levels = split_quoted_delimited_str(summary_elements["dependent_var_levels"])
     is_classification = summary_elements["is_classification"]
@@ -645,8 +645,8 @@ def forest_predict(schema_madlib, model, source, output,
     pred_name = ('"prob_{0}"' if pred_type == "prob" else
                  '"estimated_{0}"').format(dep_varname.replace('"', '').strip())
 
-    join_str = "," if grouping_cols is None else "JOIN"
-    using_str = "" if grouping_cols is None else "USING (" + grouping_cols + ")"
+    join_str = "," if grouping_col is None else "JOIN"
+    using_str = "" if grouping_col is None else "USING (" + grouping_col + ")"
 
     if not is_classification:
         majority_pred_expression = "AVG(aggregated_prediction)"
@@ -864,7 +864,7 @@ def get_tree(schema_madlib, model_table, gid, sample_id,
 def _calculate_oob_prediction(
         schema_madlib, model_table, cat_features_info_table, con_splits_table,
         oob_prediction_table, oob_view, sample_id, id_col_name, cat_features,
-        con_features, source_table, grouping_cols, grp_key_to_grp_cols, dep,
+        con_features, source_table, grouping_col, grp_key_to_grp_cols, dep,
         num_permutations, is_classification, importance, num_bins, filter_null, null_proxy=None):
     """Calculate predication for out-of-bag sample"""
 
@@ -872,8 +872,8 @@ def _calculate_oob_prediction(
         schema_madlib, source_table, cat_features, con_features,
         "cat_levels_in_text", "cat_n_levels", null_proxy)
 
-    join_str = "," if grouping_cols is None else "JOIN"
-    using_str = "" if grouping_cols is None else "USING (" + grouping_cols + ")"
+    join_str = "," if grouping_col is None else "JOIN"
+    using_str = "" if grouping_col is None else "USING (" + grouping_col + ")"
 
     oob_var_dist_view = unique_string()
     if importance:
@@ -994,12 +994,12 @@ def _calculate_oob_prediction(
 # -------------------------------------------------------------------------
 
 
-def _create_con_splits_table(schema_madlib, con_splits_table, grouping_cols,
+def _create_con_splits_table(schema_madlib, con_splits_table, grouping_col,
                              grp_key_to_grp_cols, bins):
 
     bytea8 = schema_madlib + '.bytea8'
     bytea8arr = schema_madlib + '.bytea8[]'
-    if grouping_cols is None:
+    if grouping_col is None:
         sql_create_con_splits_table = """
             CREATE TEMP TABLE {con_splits_table} AS
             SELECT
@@ -1189,10 +1189,10 @@ def _create_summary_table(**kwargs):
                                                  kwargs['con_features']))
     kwargs['cat_features_str'] = ','.join(kwargs['cat_features'])
     kwargs['con_features_str'] = ','.join(kwargs['con_features'])
-    if kwargs['grouping_cols']:
-        kwargs['grouping_cols_str'] = "'{grouping_cols}'".format(**kwargs)
+    if kwargs['grouping_col']:
+        kwargs['grouping_col_str'] = "'{grouping_col}'".format(**kwargs)
     else:
-        kwargs['grouping_cols_str'] = 'NULL'
+        kwargs['grouping_col_str'] = 'NULL'
     kwargs['n_rows_skipped'] = kwargs['n_all_rows'] - kwargs['n_rows']
 
     kwargs['output_table_summary'] = add_postfix(kwargs['output_table_name'], "_summary")
@@ -1205,10 +1205,10 @@ def _create_summary_table(**kwargs):
                 '{output_table_name}'::text     AS model_table,
                 '{id_col_name}'::text           AS id_col_name,
                 '{dependent_variable}'::text    AS dependent_varname,
-                {features}                      AS independent_varnames,
+                {features}                      AS independent_varname,
                 '{cat_features_str}'::text      AS cat_features,
                 '{con_features_str}'::text      AS con_features,
-                {grouping_cols_str}::text       AS grouping_cols,
+                {grouping_col_str}::text       AS grouping_col,
                 {num_trees}::integer            AS num_trees,
                 {num_random_features}::integer  AS num_random_features,
                 {max_tree_depth}::integer       AS max_tree_depth,
@@ -1235,7 +1235,7 @@ def _create_summary_table(**kwargs):
 def _create_group_table(
         schema_madlib, output_table_name, impurity_imp_table, oob_error_table,
         importance_table, cat_features_info_table, grp_key_to_grp_cols,
-        grouping_cols, tree_terminated):
+        grouping_col, tree_terminated):
     """ Create the group table for random forest"""
     if importance_table:
         impurity_var_importance_query = """
@@ -1258,13 +1258,13 @@ def _create_group_table(
         left_join_importance_table_str = ''
         join_impurity_table_str = ''
 
-    grouping_cols_str = ('' if grouping_cols is None else grouping_cols + ",")
+    grouping_col_str = ('' if grouping_col is None else grouping_col + ",")
     group_table_name = add_postfix(output_table_name, "_group")
     sql_create_group_table = """
             CREATE TABLE {group_table_name} AS
             SELECT
                 gid,
-                {grouping_cols_str}
+                {grouping_col_str}
                 grp_finished AS success,
                 cat_n_levels,
                 cat_levels_in_text,
@@ -1320,8 +1320,8 @@ def _create_empty_result_table(schema_madlib, output_table_name,
 
 def _insert_into_result_table(schema_madlib, tree_states, output_table_name,
                               impurity_imp_table, grp_key_to_grp_cols,
-                              sample_id, importance, grouping_cols):
-    if grouping_cols:
+                              sample_id, importance, grouping_col):
+    if grouping_col:
         grp_join_sql = """JOIN {0} USING (grp_key)""".format(grp_key_to_grp_cols)
         gid_str = "gid"
         grp_key = py_list_to_sql_string([tree_state['grp_key']
@@ -1380,7 +1380,7 @@ def _insert_into_result_table(schema_madlib, tree_states, output_table_name,
 def _forest_validate_args(
         training_table_name, output_table_name, id_col_name,
         list_of_features, dependent_variable, list_of_features_to_exclude,
-        grouping_cols, num_trees, num_random_features, n_perm,
+        grouping_col, num_trees, num_random_features, n_perm,
         max_tree_depth, min_split, min_bucket, num_bins, sample_ratio):
     """ Validate the arguments for the random forest training function"""
 
@@ -1403,8 +1403,8 @@ def _forest_validate_args(
             "Random forest error: Invalid dependent variable ({0}).".
             format(dependent_variable))
 
-    if grouping_cols is not None and grouping_cols.strip() != '':
-        _assert(is_var_valid(training_table_name, grouping_cols),
+    if grouping_col is not None and grouping_col.strip() != '':
+        _assert(is_var_valid(training_table_name, grouping_col),
                 "Random forest error: Invalid grouping column argument.")
 
     _assert(num_trees > 0, "Random forest error: num_trees must be positive.")
@@ -1434,7 +1434,7 @@ def _validate_predict(model, source, output, pred_type):
 
     input_tbl_valid(add_postfix(model, "_summary"), 'Random forest')
     cols_in_tbl_valid(add_postfix(model, "_summary"),
-                      ["grouping_cols", "id_col_name", "dependent_varname",
+                      ["grouping_col", "id_col_name", "dependent_varname",
                           "cat_features", "con_features", "is_classification"],
                       'Random forest')
 
@@ -1520,12 +1520,12 @@ def get_var_importance(schema_madlib, model_table, output_table, **kwargs):
     # for DT.
     importance_model_table = (model_table if not is_RF else
                               add_postfix(model_table, "_group"))
-    grouping_cols = plpy.execute("SELECT grouping_cols FROM {summary_table}".
-                                 format(**locals()))[0]['grouping_cols']
-    if grouping_cols:
-        grouping_cols_comma = add_postfix(grouping_cols, ", ")
+    grouping_col = plpy.execute("SELECT grouping_col FROM {summary_table}".
+                                 format(**locals()))[0]['grouping_col']
+    if grouping_col:
+        grouping_col_comma = add_postfix(grouping_col, ", ")
     else:
-        grouping_cols_comma = ''
+        grouping_col_comma = ''
     is_impurity_imp_col_present = _is_impurity_importance_in_model(
         importance_model_table, summary_table, is_RF=is_RF)
 
@@ -1567,8 +1567,8 @@ def get_var_importance(schema_madlib, model_table, output_table, **kwargs):
 
     plpy.execute("""
         CREATE TABLE {output_table} AS
-            SELECT {grouping_cols_comma}
-                unnest(independent_varnames) AS feature,
+            SELECT {grouping_col_comma}
+                unnest(independent_varname) AS feature,
                 {oob_var_importance_str}
                 {impurity_var_importance_str}
             FROM {importance_model_table}, {summary_table}

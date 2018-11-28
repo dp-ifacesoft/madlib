@@ -42,10 +42,8 @@ MODEL_TABLE_SUMMARY_COLS = OrderedDict([
     ('model_table', 'text'),
     ('model_repository', 'text'),
     ('dependent_varname', 'text'),
-    ('list_of_features', 'text'),
-    ('list_of_features_to_exclude', 'text'),
-    ('independent_varnames', 'text[]'),
-    ('grouping_cols', 'text'),
+    ('independent_varname', 'text[]'),
+    ('grouping_col', 'text'),
     ('name', 'text'),
     ('description', 'text'),
     ('madlib_version', 'text'),
@@ -60,29 +58,23 @@ COLS_FOR_VIEW_FROM_SUMMARY_REPO = [
     'model_table',
     'model_repository',
     'dependent_varname',
-    'list_of_features',
-    'list_of_features_to_exclude',
-    'independent_varnames',
-    'grouping_cols',
+    'independent_varname',
+    'grouping_col',
     'name',
     'description']
 SUMMARY_REPO_COLS_TO_QUOTE = [
     'dependent_varname',
-    'list_of_features',
-    'list_of_features_to_exclude',
-    'grouping_cols',
+    'grouping_col',
     'name',
     'description']
 
 def get_summary_cols_dict(**kwargs):
     summary_cols_fields = ['source_table',
-                           'list_of_features',
-                           'list_of_features_to_exclude',
                            'dependent_varname',
-                           'grouping_cols',
+                           'grouping_col',
                            'start_training_time',
                            'end_training_time',
-                           'independent_varnames',
+                           'independent_varname',
                            'name',
                            'description',
                            'model_type',
@@ -117,7 +109,7 @@ def get_model_repository_colname():
 def get_madlib_version_colname():
     return 'madlib_version'
 def get_ind_var_colname():
-    return 'independent_varnames'
+    return 'independent_varname'
 ##########################################################
 ## Miscellaneous helper functions
 ##########################################################

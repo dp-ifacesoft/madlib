@@ -665,15 +665,15 @@ SELECT assert
     input_cp                    = 0 AND
     model_table                 = 'train_view' AND
     model_repository            = 'train_repo' AND
-    list_of_features            = '"OUTLOOK", temperature' AND
-    list_of_features_to_exclude is NULL,
+    features_to_include            = '"OUTLOOK", temperature' AND
+    features_to_exclude is NULL,
     'Summary Validation failed for special chars. Actual:' || summary
 ) from (select * from train_view_summary) summary;
 -- assert array cols in summary table
 SELECT assert
 (
-    grouping_cols               is NULL AND
-    independent_varnames        = $${"\"OUTLOOK\"", temperature}$$ AND
+    grouping_col               is NULL AND
+    independent_varname        = $${"\"OUTLOOK\"", temperature}$$ AND
     con_features                = '{temperature}' AND
     cat_features                = $${"\"OUTLOOK\""}$$ AND
     independent_var_types       = $${text,"double precision"}$$ AND

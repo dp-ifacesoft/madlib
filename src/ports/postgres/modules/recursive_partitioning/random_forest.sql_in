@@ -54,7 +54,7 @@ forest_train(training_table_name,
              dependent_variable,
              list_of_features,
              list_of_features_to_exclude,
-             grouping_cols,
+             grouping_col,
              num_trees,
              num_random_features,
              importance,
@@ -127,7 +127,7 @@ forest_train(training_table_name,
       The names in this parameter should be identical to the names used in the table and
       quoted appropriately. </DD>
 
-  <DT>grouping_cols (optional)</DT>
+  <DT>grouping_col (optional)</DT>
   <DD>TEXT, default: NULL. Comma-separated list of column names to group the
       data by. This will produce multiple random forests, one for
       each group.</DD>
@@ -295,7 +295,7 @@ forest_train(training_table_name,
     </tr>
 
     <tr>
-      <th>independent_varnames</th>
+      <th>independent_varname</th>
       <td>TEXT. Independent variables</td>
     </tr>
 
@@ -312,7 +312,7 @@ forest_train(training_table_name,
     </tr>
 
     <tr>
-      <th>grouping_cols</th>
+      <th>grouping_col</th>
       <td>INTEGER. Names of grouping columns.</td>
     </tr>
 
@@ -421,9 +421,9 @@ forest_train(training_table_name,
 
       <tr>
         <th>&lt;...&gt;</th>
-        <td>Same type as in the training data table 'grouping_cols'.
+        <td>Same type as in the training data table 'grouping_col'.
         This could be multiple columns depending on
-        the 'grouping_cols' input.</td>
+        the 'grouping_col' input.</td>
       </tr>
 
       <tr>
@@ -462,14 +462,14 @@ forest_train(training_table_name,
         <td>DOUBLE PRECISION[]. Out-of-bag variable importance for both
         categorical and continuous features.
         The order corresponds to the order of the variables in
-        'independent_varnames' in <em> \<model_table\>_summary</em>.</td>
+        'independent_varname' in <em> \<model_table\>_summary</em>.</td>
       </tr>
 
       <tr>
         <th>impurity_var_importance</th>
         <td>DOUBLE PRECISION[]. Impurity variable importance for both
         categorial and continuous features. The order corresponds to the order
-         of the variables in 'independent_varnames' in
+         of the variables in 'independent_varname' in
         <em> \<model_table\>_summary</em>.</td>
       </tr>
 
@@ -716,10 +716,10 @@ source_table          | rf_golf
 model_table           | train_output
 id_col_name           | id
 dependent_varname     | class
-independent_varnames  | "OUTLOOK",windy,temperature,humidity
+independent_varname  | "OUTLOOK",windy,temperature,humidity
 cat_features          | "OUTLOOK",windy
 con_features          | temperature,humidity
-grouping_cols         |
+grouping_col         |
 num_trees             | 20
 num_random_features   | 2
 max_tree_depth        | 8
@@ -756,7 +756,7 @@ The 'cat_levels_in_text' array shows the
 levels of the categorical variables "OUTLOOK" and windy,
 which have 3 and 2 levels respectively.  Out-of-bag and impurity
 variable importance arrays are ordered according to the order of
-the variables in 'independent_varnames'
+the variables in 'independent_varname'
 in <model_table>_summary.
 A higher value means higher importance for the
 variable.  We can use the helper function to
@@ -967,10 +967,10 @@ source_table          | rf_golf
 model_table           | train_output
 id_col_name           | id
 dependent_varname     | class
-independent_varnames  | (clouds_airquality)[1],(clouds_airquality)[2],("Temp_Humidity")[1],("Temp_Humidity")[2]
+independent_varname  | (clouds_airquality)[1],(clouds_airquality)[2],("Temp_Humidity")[1],("Temp_Humidity")[2]
 cat_features          | (clouds_airquality)[1],(clouds_airquality)[2]
 con_features          | ("Temp_Humidity")[1],("Temp_Humidity")[2]
-grouping_cols         |
+grouping_col         |
 num_trees             | 20
 num_random_features   | 2
 max_tree_depth        | 8
@@ -1116,10 +1116,10 @@ source_table          | mt_cars
 model_table           | mt_cars_output
 id_col_name           | id
 dependent_varname     | mpg
-independent_varnames  | vs,cyl,disp,qsec,wt
+independent_varname  | vs,cyl,disp,qsec,wt
 cat_features          | vs,cyl
 con_features          | disp,qsec,wt
-grouping_cols         | am
+grouping_col         | am
 num_trees             | 10
 num_random_features   | 2
 max_tree_depth        | 10
@@ -1322,10 +1322,10 @@ source_table          | null_handling_example
 model_table           | train_output
 id_col_name           | id
 dependent_varname     | response
-independent_varnames  | country,weather,city
+independent_varname  | country,weather,city
 cat_features          | country,weather,city
 con_features          |
-grouping_cols         |
+grouping_col         |
 num_trees             | 10
 num_random_features   | 2
 max_tree_depth        | 3
@@ -1448,7 +1448,7 @@ File random_forest.sql_in documenting the training function
   *        considered categorical columns.
   * @param list_of_features_to_exclude OPTIONAL. List of column names
   *        (comma-separated string) to exlude from the predictors list.
-  * @param grouping_cols OPTIONAL. List of column names (comma-separated
+  * @param grouping_col OPTIONAL. List of column names (comma-separated
   *        string) to group the data by. This will lead to creating
   *        multiple Random Forests, one for each group.
   * @param num_trees OPTIONAL (Default = 100). Maximum number of trees to grow in the
@@ -1492,7 +1492,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   INTEGER,
     num_random_features         INTEGER,
     importance                  BOOLEAN,
@@ -1514,7 +1514,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
                                    dependent_variable,
                                    list_of_features,
                                    list_of_features_to_exclude,
-                                   grouping_cols,
+                                   grouping_col,
                                    num_trees,
                                    num_random_features,
                                    importance,
@@ -1779,7 +1779,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   INTEGER,
     num_random_features         INTEGER,
     importance                  BOOLEAN,
@@ -1804,7 +1804,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer,
     importance                  boolean,
@@ -1844,7 +1844,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer,
     importance                  boolean,
@@ -1867,7 +1867,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer,
     importance                  boolean,
@@ -1890,7 +1890,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer,
     importance                  boolean,
@@ -1912,7 +1912,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer,
     importance                  boolean,
@@ -1932,7 +1932,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer,
     importance                  boolean,
@@ -1951,7 +1951,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer,
     importance                  boolean
@@ -1969,7 +1969,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer,
     num_random_features         integer
 ) RETURNS VOID AS $$
@@ -1987,7 +1987,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT,
+    grouping_col               TEXT,
     num_trees                   integer
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.forest_train($1, $2, $3, $4, $5, $6, $7, $8,
@@ -2004,7 +2004,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.forest_train(
     dependent_variable          TEXT,
     list_of_features            TEXT,
     list_of_features_to_exclude TEXT,
-    grouping_cols               TEXT
+    grouping_col               TEXT
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.forest_train($1, $2, $3, $4, $5, $6, $7,
             100::INTEGER, NULL::integer, TRUE::BOOLEAN, 1::INTEGER,
