@@ -25,60 +25,18 @@ import plpy
 ## Helper variables and functions related to column names
 ## in model repo summary tables.
 ##########################################################
-MODEL_TABLE_COLS = OrderedDict([
-    ('model_id', 'int'),
-    ('grouping_values', 'text'),
-    ('model_type', 'text'),
-    ('model_data', 'bytea'),
-    ('attributes', 'JSON')
-    ])
-MODEL_TABLE_SUMMARY_COLS = OrderedDict([
-    ('model_id', 'serial'),
-    ('model_type', 'text'),
-    ('summary', 'JSON'),
-    ('start_training_time', 'timestamp'),
-    ('end_training_time', 'timestamp'),
-    ('source_table', 'text'),
-    ('model_table', 'text'),
-    ('model_repository', 'text'),
-    ('dependent_varname', 'text'),
-    ('independent_varname', 'text[]'),
-    ('grouping_col', 'text'),
-    ('name', 'text'),
-    ('description', 'text'),
-    ('madlib_version', 'text'),
-    ('model_data_type', 'text'),
-    ('__madlib_internal_id__', 'text')
-    ])
-COLS_FOR_VIEW_FROM_SUMMARY_REPO = [
-    'model_type',
-    'start_training_time',
-    'end_training_time',
-    'source_table',
-    'model_table',
-    'model_repository',
-    'dependent_varname',
-    'independent_varname',
-    'grouping_col',
-    'name',
-    'description']
-SUMMARY_REPO_COLS_TO_QUOTE = [
-    'dependent_varname',
-    'grouping_col',
-    'name',
-    'description']
 
 def get_summary_cols_dict(**kwargs):
-    summary_cols_fields = ['source_table',
-                           'dependent_varname',
-                           'grouping_col',
-                           'start_training_time',
-                           'end_training_time',
-                           'independent_varname',
-                           'name',
-                           'description',
-                           'model_type',
-                           'model_data_type']
+    summary_cols_fields = [ModelRepoSummaryCols.SOURCE_TABLE_COLNAME,
+                           ModelRepoSummaryCols.DEPENDENT_COLNAME,
+                           ModelRepoSummaryCols.GROUPING_COLNAME,
+                           ModelRepoSummaryCols.START_TRAIN_TIME_COLNAME,
+                           ModelRepoSummaryCols.END_TRAIN_TIME_COLNAME,
+                           ModelRepoSummaryCols.INDEPENDENT_COLNAME,
+                           ModelRepoSummaryCols.NAME_COLNAME,
+                           ModelRepoSummaryCols.DESC_COLNAME,
+                           ModelRepoSummaryCols.MODEL_TYPE_COLNAME,
+                           ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME]
     model_summary_cols_dict = {x:kwargs[x] for x in summary_cols_fields if x in kwargs}
     if len(model_summary_cols_dict) != len(summary_cols_fields):
         missing_cols = list(
@@ -88,28 +46,71 @@ def get_summary_cols_dict(**kwargs):
             "are not assigned any value.".format(missing_cols))
     return model_summary_cols_dict
 
-def get_model_id_colname():
-    return 'model_id'
-def get_attributes_colname():
-    return 'attributes'
-def get_summary_colname():
-    return 'summary'
-def get_model_data_type_colname():
-    return 'model_data_type'
-def get_model_type_colname():
-    return 'model_type'
-def get_model_data_colname():
-    return 'model_data'
-def get_internal_id_colname():
-    return '__madlib_internal_id__'
-def get_model_table_colname():
-    return 'model_table'
-def get_model_repository_colname():
-    return 'model_repository'
-def get_madlib_version_colname():
-    return 'madlib_version'
-def get_ind_var_colname():
-    return 'independent_varname'
+class ModelRepoCols():
+    MODEL_ID_COLNAME = 'model_id'
+    GROUPING_VALS_COLNAME = 'grouping_values'
+    MODEL_TYPE_COLNAME = 'model_type'
+    MODEL_DATA_COLNAME = 'model_data'
+    ATTRIBUTES_COLNAME = 'attributes'
+
+    MODEL_TABLE_COLS = OrderedDict([
+        (MODEL_ID_COLNAME, 'int'),
+        (GROUPING_VALS_COLNAME, 'text'),
+        (MODEL_TYPE_COLNAME, 'text'),
+        (MODEL_DATA_COLNAME, 'bytea'),
+        (ATTRIBUTES_COLNAME, 'JSON')
+    ])
+
+class ModelRepoSummaryCols():
+    MODEL_ID_COLNAME = 'model_id'
+    MODEL_TYPE_COLNAME = 'model_type'
+    SUMMARY_COLNAME = 'summary'
+    START_TRAIN_TIME_COLNAME = 'start_training_time'
+    END_TRAIN_TIME_COLNAME = 'end_training_time'
+    SOURCE_TABLE_COLNAME = 'source_table'
+    MODEL_TABLE_COLNAME = 'model_table'
+    MODEL_REPO_COLNAME = 'model_repository'
+    DEPENDENT_COLNAME = 'dependent_varname'
+    INDEPENDENT_COLNAME = 'independent_varname'
+    GROUPING_COLNAME = 'grouping_col'
+    NAME_COLNAME = 'name'
+    DESC_COLNAME = 'description'
+    MAD_VER_COLNAME = 'madlib_version'
+    MODEL_DATA_TYPE_COLNAME = 'model_data_type'
+    INTERNAL_ID_COLNAME = '__madlib_internal_id__'
+
+    MODEL_TABLE_SUMMARY_COLS = OrderedDict([
+        (MODEL_ID_COLNAME, 'serial'),
+        (MODEL_TYPE_COLNAME, 'text'),
+        (SUMMARY_COLNAME, 'JSON'),
+        (START_TRAIN_TIME_COLNAME, 'timestamp'),
+        (END_TRAIN_TIME_COLNAME, 'timestamp'),
+        (SOURCE_TABLE_COLNAME, 'text'),
+        (MODEL_TABLE_COLNAME, 'text'),
+        (MODEL_REPO_COLNAME, 'text'),
+        (DEPENDENT_COLNAME, 'text'),
+        (INDEPENDENT_COLNAME, 'text[]'),
+        (GROUPING_COLNAME, 'text'),
+        (NAME_COLNAME, 'text'),
+        (DESC_COLNAME, 'text'),
+        (MAD_VER_COLNAME, 'text'),
+        (MODEL_DATA_TYPE_COLNAME, 'text'),
+        (INTERNAL_ID_COLNAME, 'text')
+        ])
+
+    COLS_FOR_VIEW_FROM_SUMMARY_REPO = [
+        MODEL_TYPE_COLNAME,
+        START_TRAIN_TIME_COLNAME,
+        END_TRAIN_TIME_COLNAME,
+        SOURCE_TABLE_COLNAME,
+        MODEL_TABLE_COLNAME,
+        MODEL_REPO_COLNAME,
+        DEPENDENT_COLNAME,
+        INDEPENDENT_COLNAME,
+        GROUPING_COLNAME,
+        NAME_COLNAME,
+        DESC_COLNAME]
+
 ##########################################################
 ## Miscellaneous helper functions
 ##########################################################
