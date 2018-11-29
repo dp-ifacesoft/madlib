@@ -48,15 +48,15 @@ def get_summary_cols_dict(**kwargs):
 
 class ModelRepoCols():
     MODEL_ID_COLNAME = 'model_id'
-    GROUPING_VALS_COLNAME = 'grouping_values'
     MODEL_TYPE_COLNAME = 'model_type'
+    GROUPING_VALS_COLNAME = 'grouping_values'
     MODEL_DATA_COLNAME = 'model_data'
     ATTRIBUTES_COLNAME = 'attributes'
 
     MODEL_TABLE_COLS = OrderedDict([
         (MODEL_ID_COLNAME, 'int'),
-        (GROUPING_VALS_COLNAME, 'text'),
         (MODEL_TYPE_COLNAME, 'text'),
+        (GROUPING_VALS_COLNAME, 'text'),
         (MODEL_DATA_COLNAME, 'bytea'),
         (ATTRIBUTES_COLNAME, 'JSON')
     ])
@@ -64,7 +64,6 @@ class ModelRepoCols():
 class ModelRepoSummaryCols():
     MODEL_ID_COLNAME = 'model_id'
     MODEL_TYPE_COLNAME = 'model_type'
-    SUMMARY_COLNAME = 'summary'
     START_TRAIN_TIME_COLNAME = 'start_training_time'
     END_TRAIN_TIME_COLNAME = 'end_training_time'
     SOURCE_TABLE_COLNAME = 'source_table'
@@ -76,13 +75,13 @@ class ModelRepoSummaryCols():
     NAME_COLNAME = 'name'
     DESC_COLNAME = 'description'
     MAD_VER_COLNAME = 'madlib_version'
+    SUMMARY_COLNAME = 'summary'
     MODEL_DATA_TYPE_COLNAME = 'model_data_type'
     INTERNAL_ID_COLNAME = '__madlib_internal_id__'
 
-    MODEL_TABLE_SUMMARY_COLS = OrderedDict([
+    MODEL_TABLE_SUMMARY_COLS_TYPES = OrderedDict([
         (MODEL_ID_COLNAME, 'serial'),
         (MODEL_TYPE_COLNAME, 'text'),
-        (SUMMARY_COLNAME, 'JSON'),
         (START_TRAIN_TIME_COLNAME, 'timestamp'),
         (END_TRAIN_TIME_COLNAME, 'timestamp'),
         (SOURCE_TABLE_COLNAME, 'text'),
@@ -94,6 +93,7 @@ class ModelRepoSummaryCols():
         (NAME_COLNAME, 'text'),
         (DESC_COLNAME, 'text'),
         (MAD_VER_COLNAME, 'text'),
+        (SUMMARY_COLNAME, 'JSON'),
         (MODEL_DATA_TYPE_COLNAME, 'text'),
         (INTERNAL_ID_COLNAME, 'text')
         ])
@@ -109,7 +109,8 @@ class ModelRepoSummaryCols():
         INDEPENDENT_COLNAME,
         GROUPING_COLNAME,
         NAME_COLNAME,
-        DESC_COLNAME]
+        DESC_COLNAME,
+        MAD_VER_COLNAME]
 
 ##########################################################
 ## Miscellaneous helper functions

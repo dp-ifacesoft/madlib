@@ -89,7 +89,7 @@ class VersionedModelTableValidator(object):
             # Now check for self.model_repo_table_summary cols and types.
             model_repo_table_summary_cols = get_cols(self.model_repo_table_summary)
             _assert(self._is_valid_versioned_table(
-                model_repo_table_summary_cols, ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS),
+                model_repo_table_summary_cols, ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS_TYPES),
                 "Unexpected columns found in model repo summary table {0}.".
                     format(self.model_repo_table_summary))
         elif model_repo_table_exists or model_repo_table_summary_exists:
@@ -369,40 +369,20 @@ class VersionedModelViewCreator(object):
         ## ----------------------------------------------------------------- ##
         ## ----------------------------------------------------------------- ##
 
-        # Append select statements for all JSON keys associated with scalar values
-        select_clause += " SELECT "+', '.join(scalar_cols_select_list)
+        select_clause += " SELECT "
 
         # If table_name is the repository table, then we must also create a
         # column for the model_data column. This is not a part of any JSON blob
         # in the repo table, so handle it separately. The model must be type
         # casted to the correct model_data_type too.
         if table_name == self.model_repo_table:
-            model_data_type = plpy.execute("""
-                    SELECT {model_dtype_cname}
-                    FROM {model_repo_summary_table}
-                    WHERE {model_id_colname}={model_id}
-                """.format(
-                    model_repo_summary_table=self.model_repo_summary_table,
-                    model_id=self.model_id,
-                    model_id_colname=ModelRepoSummaryCols.MODEL_ID_COLNAME,
-                    model_dtype_cname=ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME)
-                )[0]['model_data_type']
-            if model_data_type == 'bytea8':
-                model_data_str = "{schema_madlib}.bytea_to_bytea8({model_data_colname})" \
-                    " as {model_data_colname}"
-            elif model_data_type == 'double precision[]':
-                model_data_str = "{schema_madlib}._double_array_recv" \
-                    "({model_data_colname}, 'double precision'::regtype::int) " \
-                    "as {model_data_colname}"
-            else:
-                plpy.error("Invalid model_data_type {}".format(
-                    self.model_data_type))
-            select_clause += ', ' + model_data_str.format(
-                schema_madlib=self.schema_madlib,
-                model_data_colname=ModelRepoCols.MODEL_DATA_COLNAME)
+            select_clause += ModelRepoCols.MODEL_TYPE_COLNAME
+            select_clause += self._get_model_data_select_clause()
         elif table_name == self.model_repo_summary_table:
-            select_clause += ', ' + ', '.join(ModelRepoSummaryCols.COLS_FOR_VIEW_FROM_SUMMARY_REPO)
+            select_clause += ', '.join(ModelRepoSummaryCols.COLS_FOR_VIEW_FROM_SUMMARY_REPO)
 
+        # Append select statements for all JSON keys associated with scalar values
+        select_clause += ', ' + ', '.join(scalar_cols_select_list)
         # If any of the JSON keys had array values, the select statement is
         # slightly more involved since we must use JSON functions to get the
         # values and convert them to arrays that SQL understands.
@@ -415,6 +395,32 @@ class VersionedModelViewCreator(object):
 
         select_clause += model_row
         return select_clause
+
+    def _get_model_data_select_clause(self):
+        model_data_type = plpy.execute("""
+                    SELECT {model_dtype_cname}
+                    FROM {model_repo_summary_table}
+                    WHERE {model_id_colname}={model_id}
+                """.format(
+                    model_repo_summary_table=self.model_repo_summary_table,
+                    model_id=self.model_id,
+                    model_id_colname=ModelRepoSummaryCols.MODEL_ID_COLNAME,
+                    model_dtype_cname=ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME)
+                )[0]['model_data_type']
+        if model_data_type == 'bytea8':
+            model_data_str = ", {schema_madlib}.bytea_to_bytea8({model_data_colname})" \
+                " as {model_data_colname}"
+        elif model_data_type == 'double precision[]':
+            model_data_str = ", {schema_madlib}._double_array_recv" \
+                "({model_data_colname}, 'double precision'::regtype::int) " \
+                "as {model_data_colname}"
+        else:
+            plpy.error("Invalid model_data_type {}".format(
+                self.model_data_type))
+        model_data_str = model_data_str.format(
+            schema_madlib=self.schema_madlib,
+            model_data_colname=ModelRepoCols.MODEL_DATA_COLNAME)
+        return model_data_str
 
     def _get_scalar_cols_select_sql_list(self, json_colname_in_tbl,
                                          json_colstypes_dict, tbl_row):
@@ -664,7 +670,7 @@ class VersionedModelWriter(object):
         plpy.execute(create_model_sql)
 
         model_table_summary_cols = ', '.join(['{0} {1}'.format(colname, coltype)
-                    for colname, coltype in ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS.items()])
+                    for colname, coltype in ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS_TYPES.items()])
         create_model_summary_sql = """
                 CREATE TABLE {self.model_repo_table_summary}
                 ({model_table_summary_cols})
@@ -757,12 +763,11 @@ class VersionedModelWriter(object):
         # special characters for all text columns in the summary repo table.
         # do not insert model_id value because it is serial
         summary_table_cols = ', '.join(['{0}'.format(colname)
-            for colname in ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS if colname != model_id_colname])
+            for colname in ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS_TYPES if colname != model_id_colname])
         repo_summary_cols_dict.update(locals())
         sql = """
             INSERT INTO {self.model_repo_table_summary} ({summary_table_cols})
             VALUES ({model_type},
-                    {summary},
                     {start_training_time},
                     {end_training_time},
                     {source_table},
@@ -774,6 +779,7 @@ class VersionedModelWriter(object):
                     {name},
                     {description},
                     {madlib_version},
+                    {summary},
                     {model_data_type},
                     {__madlib_internal_id__})
         """.format(MODEL_VER_DELIMITER=self.MODEL_VER_DELIMITER,
@@ -808,7 +814,7 @@ class VersionedModelWriter(object):
         model_table_cols = ', '.join(['{0}'.format(colname)
                     for colname in ModelRepoCols.MODEL_TABLE_COLS])
         sql = """INSERT INTO {self.model_repo_table} ({model_table_cols})
-                 VALUES ('{model_id}', NULL, '{self.model_type}',
+                 VALUES ('{model_id}', '{self.model_type}', NULL,
                          {model_data_query},
                          {self.MODEL_VER_DELIMITER}{model_attributes}{self.MODEL_VER_DELIMITER})
         """.format(**locals())
