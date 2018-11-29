@@ -18,33 +18,11 @@
 # under the License.
 
 from collections import OrderedDict
-from utilities.utilities import add_postfix
-import plpy
 
 ##########################################################
 ## Helper variables and functions related to column names
 ## in model repo summary tables.
 ##########################################################
-
-def get_summary_cols_dict(**kwargs):
-    summary_cols_fields = [ModelRepoSummaryCols.SOURCE_TABLE_COLNAME,
-                           ModelRepoSummaryCols.DEPENDENT_COLNAME,
-                           ModelRepoSummaryCols.GROUPING_COLNAME,
-                           ModelRepoSummaryCols.START_TRAIN_TIME_COLNAME,
-                           ModelRepoSummaryCols.END_TRAIN_TIME_COLNAME,
-                           ModelRepoSummaryCols.INDEPENDENT_COLNAME,
-                           ModelRepoSummaryCols.NAME_COLNAME,
-                           ModelRepoSummaryCols.DESC_COLNAME,
-                           ModelRepoSummaryCols.MODEL_TYPE_COLNAME,
-                           ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME]
-    model_summary_cols_dict = {x:kwargs[x] for x in summary_cols_fields if x in kwargs}
-    if len(model_summary_cols_dict) != len(summary_cols_fields):
-        missing_cols = list(
-            set(summary_cols_fields) -
-            set(model_summary_cols_dict.keys()))
-        plpy.error("Model Versioning Error: Summary columns {} " \
-            "are not assigned any value.".format(missing_cols))
-    return model_summary_cols_dict
 
 class ModelRepoCols():
     MODEL_ID_COLNAME = 'model_id'
@@ -112,8 +90,22 @@ class ModelRepoSummaryCols():
         DESC_COLNAME,
         MAD_VER_COLNAME]
 
-##########################################################
-## Miscellaneous helper functions
-##########################################################
-def get_summary_tablename(tbl):
-    return add_postfix(tbl, '_summary') if tbl else None
+    SUMMARY_REPO_COLS_POPULATED_BY_MODULES = [
+        MODEL_TYPE_COLNAME,
+        START_TRAIN_TIME_COLNAME,
+        END_TRAIN_TIME_COLNAME,
+        SOURCE_TABLE_COLNAME,
+        DEPENDENT_COLNAME,
+        INDEPENDENT_COLNAME,
+        GROUPING_COLNAME,
+        NAME_COLNAME,
+        DESC_COLNAME,
+        MODEL_DATA_TYPE_COLNAME]
+
+    SUMMARY_REPO_COLS_POPULATED_BY_VERSIONING = [
+        INTERNAL_ID_COLNAME,
+        MODEL_ID_COLNAME,
+        MAD_VER_COLNAME,
+        MODEL_TABLE_COLNAME,
+        MODEL_REPO_COLNAME,
+        SUMMARY_COLNAME]

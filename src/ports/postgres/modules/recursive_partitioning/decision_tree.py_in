@@ -17,7 +17,7 @@ from itertools import groupby
 from collections import Iterable
 
 from internal.db_utils import quote_literal
-from internal.model_versioning_helper import get_summary_cols_dict
+from internal.model_versioning_helper import ModelRepoSummaryCols
 from internal.model_versioning import VersionedModelReader
 from internal.model_versioning import VersionedModelTableValidator
 from internal.model_versioning import VersionedModelWriter
@@ -945,7 +945,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
 
     # List of keys in JSON summary column. NOTE that these names must be the
     # same as the corresponding variable names.
-    model_summary_json_fields = [
+    dt_summary_json_fields = [
         'is_classification', 'id_col_name',
         'cat_features', 'con_features',
         'num_groups', 'num_failed_groups',
@@ -954,10 +954,20 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         'dependent_var_levels', 'dependent_var_type',
         'independent_var_types', 'input_cp', 'n_folds',
         'null_proxy', 'num_all_groups', 'method']
-    model_summary_json_dict = _filter_locals_dict(
-        model_summary_json_fields, **locals())
+    dt_summary_json_dict = _filter_locals_dict(
+        dt_summary_json_fields, **locals())
     # Update values of non-JSON columns in summary repo table.
-    model_summary_cols = get_summary_cols_dict(**locals())
+    summary_cols = {
+        ModelRepoSummaryCols.MODEL_TYPE_COLNAME: model_type,
+        ModelRepoSummaryCols.START_TRAIN_TIME_COLNAME: start_training_time,
+        ModelRepoSummaryCols.END_TRAIN_TIME_COLNAME: end_training_time,
+        ModelRepoSummaryCols.SOURCE_TABLE_COLNAME: source_table,
+        ModelRepoSummaryCols.DEPENDENT_COLNAME: dependent_varname,
+        ModelRepoSummaryCols.INDEPENDENT_COLNAME: independent_varname,
+        ModelRepoSummaryCols.GROUPING_COLNAME: grouping_col,
+        ModelRepoSummaryCols.NAME_COLNAME: name,
+        ModelRepoSummaryCols.DESC_COLNAME: description,
+        ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME: model_data_type}
 
     model_data = tree_state['tree_state']
     model_attributes = dict(
@@ -970,7 +980,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     model_writer = VersionedModelWriter(
         schema_madlib, output_table_name, model_repository_table)
     model_writer.store_model(model_data, model_attributes,
-                             model_summary_cols, model_summary_json_dict)
+                             summary_cols, dt_summary_json_dict)
 
 # ------------------------------------------------------------
 

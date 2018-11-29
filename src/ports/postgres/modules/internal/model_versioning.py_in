@@ -23,6 +23,7 @@ import types
 
 from internal.model_versioning_helper import *
 from utilities.utilities import _assert
+from utilities.utilities import add_postfix
 from utilities.utilities import BYTEA, BYTEA8
 from utilities.utilities import is_platform_pg
 from utilities.utilities import is_valid_psql_type
@@ -36,6 +37,9 @@ from utilities.validate_args import table_exists
 from utilities.validate_args import TABLES_ONLY, VIEWS_ONLY
 
 m4_changequote(`<!', `!>')
+
+def get_summary_tablename(tbl):
+    return add_postfix(tbl, '_summary') if tbl else None
 
 class VersionedModelTableValidator(object):
     """
@@ -377,7 +381,7 @@ class VersionedModelViewCreator(object):
         # casted to the correct model_data_type too.
         if table_name == self.model_repo_table:
             select_clause += ModelRepoCols.MODEL_TYPE_COLNAME
-            select_clause += self._get_model_data_select_clause()
+            select_clause += ', ' + self._get_model_data_select_clause()
         elif table_name == self.model_repo_summary_table:
             select_clause += ', '.join(ModelRepoSummaryCols.COLS_FOR_VIEW_FROM_SUMMARY_REPO)
 
@@ -408,10 +412,10 @@ class VersionedModelViewCreator(object):
                     model_dtype_cname=ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME)
                 )[0]['model_data_type']
         if model_data_type == 'bytea8':
-            model_data_str = ", {schema_madlib}.bytea_to_bytea8({model_data_colname})" \
+            model_data_str = "{schema_madlib}.bytea_to_bytea8({model_data_colname})" \
                 " as {model_data_colname}"
         elif model_data_type == 'double precision[]':
-            model_data_str = ", {schema_madlib}._double_array_recv" \
+            model_data_str = "{schema_madlib}._double_array_recv" \
                 "({model_data_colname}, 'double precision'::regtype::int) " \
                 "as {model_data_colname}"
         else:
@@ -700,6 +704,7 @@ class VersionedModelWriter(object):
         """
         # Get value of model_type before quoting it in function
         # _store_model_table_summary()
+        self._validate_repo_summary_cols(repo_summary_cols_dict)
         model_type_colname = ModelRepoSummaryCols.MODEL_TYPE_COLNAME
         if repo_summary_cols_dict[model_type_colname]:
             self.model_type = repo_summary_cols_dict[model_type_colname].strip()
@@ -734,6 +739,16 @@ class VersionedModelWriter(object):
                                                  self.model_view,
                                                  validate_tables=False)
         view_creator.create_view()
+
+    def _validate_repo_summary_cols(self, summary_cols_from_module):
+        missing_cols = [k for k in summary_cols_from_module.keys()
+            if k not in
+            ModelRepoSummaryCols.SUMMARY_REPO_COLS_POPULATED_BY_MODULES
+            ]
+        if missing_cols:
+            plpy.error("Model Versioning Error: Summary columns {} " \
+                "are not assigned any value.".format(missing_cols))
+
 
     def _store_model_table_summary(self, repo_summary_cols_dict,
                                    model_summary_json):
