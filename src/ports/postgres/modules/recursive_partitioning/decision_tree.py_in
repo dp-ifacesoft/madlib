@@ -910,7 +910,6 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     cat_n = bins['cat_n']
     cat_features = bins['cat_features']
     con_features = bins['con_features']
-    source_table = training_table_name
     num_groups = 1
     num_failed_groups = int(tree_state['finished'] != 1)  # 1 if failed, 0 if succeeded
     total_rows_processed = n_rows
@@ -921,9 +920,10 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
              else tree_state['tree_depth'])
 
     # dependent variables
-    dep_type = _get_dep_type(training_table_name, dependent_variable)
+    #TODO this is duplicated in _create_summary_table, refactor?
+    dependent_var_type = _get_dep_type(training_table_name, dependent_variable)
     if dep_list:
-        if is_psql_boolean_type(dep_type):
+        if is_psql_boolean_type(dependent_var_type):
             # Special handling for boolean since Python booleans start with
             # capitals (i.e False instead of false)
             # Note:  dep_list is sorted, hence 'false' will be first
@@ -933,8 +933,6 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     else:
         dependent_var_levels = "NULL"
 
-    dependent_var_type = dep_type
-    dependent_varname = dependent_variable
     independent_var_types = [all_cols_types[c]
         for c in cat_features+con_features]
     independent_varname = py_list_to_sql_string(
@@ -961,8 +959,8 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         ModelRepoSummaryCols.MODEL_TYPE_COLNAME: model_type,
         ModelRepoSummaryCols.START_TRAIN_TIME_COLNAME: start_training_time,
         ModelRepoSummaryCols.END_TRAIN_TIME_COLNAME: end_training_time,
-        ModelRepoSummaryCols.SOURCE_TABLE_COLNAME: source_table,
-        ModelRepoSummaryCols.DEPENDENT_COLNAME: dependent_varname,
+        ModelRepoSummaryCols.SOURCE_TABLE_COLNAME: training_table_name,
+        ModelRepoSummaryCols.DEPENDENT_COLNAME: dependent_variable,
         ModelRepoSummaryCols.INDEPENDENT_COLNAME: independent_varname,
         ModelRepoSummaryCols.GROUPING_COLNAME: grouping_col,
         ModelRepoSummaryCols.NAME_COLNAME: name,
@@ -1707,9 +1705,9 @@ def _create_summary_table(
             long_format=True)
     else:
         dependent_var_levels = "NULL"
-    indep_var_types = [all_cols_types[c] for c in cat_features+con_features]
-    indep_var_types = py_list_to_sql_string(
-        map(quote_literal, indep_var_types),
+    independent_var_types = [all_cols_types[c] for c in cat_features+con_features]
+    independent_var_types = py_list_to_sql_string(
+        map(quote_literal, independent_var_types),
         array_type='text',
         long_format=True)
     independent_varname = py_list_to_sql_string(
@@ -1726,9 +1724,9 @@ def _create_summary_table(
     n_rows_skipped = n_all_rows - n_rows
 
     if isinstance(cp, Iterable):
-        cp_str = py_list_to_sql_string(cp, 'double precision')
+        input_cp = py_list_to_sql_stri(cp, 'double precision')
     else:
-        cp_str = str(cp) + "::double precision"
+        input_cp = str(cp) + "::double precision"
 
     if use_existing_tables:
         plpy.execute("TRUNCATE " + output_table_summary)
@@ -1756,8 +1754,8 @@ def _create_summary_table(
                 {n_rows_skipped}::integer      AS total_rows_skipped,
                 {dependent_var_levels}         AS dependent_var_levels,
                 '{dep_type}'::text             AS dependent_var_type,
-                {indep_var_types}              AS independent_var_types,
-                {cp_str}                       AS input_cp,
+                {independent_var_types}        AS independent_var_types,
+                {input_cp}                     AS input_cp,
                 {n_folds}::integer             AS n_folds,
                 {null_proxy_str}::text         AS null_proxy
             """.format(**locals())
