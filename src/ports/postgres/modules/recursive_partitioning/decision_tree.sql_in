@@ -1561,6 +1561,7 @@ File decision_tree.sql_in documenting the training function
   *        specified description of the model.
   * see \ref grp_decision_tree for more details.
   */
+-- TODO move args based on the excel sheet
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     training_table_name         TEXT,
     output_table_name           TEXT,

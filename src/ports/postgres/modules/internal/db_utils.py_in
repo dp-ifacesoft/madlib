@@ -90,9 +90,11 @@ def is_col_1d_array(source_table, col_name):
     return result[0]["n_y"]
 
 # ------------------------------------------------------------------------------
+
+
 def quote_dict_values(input_dict, exclude_keys, delimiter):
-    for key in input_dict:
+    for key, value in input_dict.items():
         if key in exclude_keys:
             continue
-        input_dict[key] = quote_literal(input_dict[key], delimiter)\
-            if input_dict[key] else "NULL"
+        input_dict[key] = quote_literal(str(value), delimiter) if value else "NULL"
+    return None

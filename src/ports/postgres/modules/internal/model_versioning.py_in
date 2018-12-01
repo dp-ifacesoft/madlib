@@ -706,12 +706,16 @@ class VersionedModelWriter(object):
         # _store_model_table_summary()
         self._validate_repo_summary_cols(repo_summary_cols_dict)
         model_type_colname = ModelRepoSummaryCols.MODEL_TYPE_COLNAME
+
+        # Assert that model_type and model_data_type are not NULL
         if repo_summary_cols_dict[model_type_colname]:
             self.model_type = repo_summary_cols_dict[model_type_colname].strip()
         else:
             plpy.error("Model Versioning Error: Invalid model type.")
         # Get value of model_data_type before quoting it in function
         # _store_model_table_summary()
+        # TODO we may not need to test if model_data_type is null. We test
+        # for it later in the code.
         model_dtype_colname = ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME
         if repo_summary_cols_dict[model_dtype_colname]:
             self.model_data_type = repo_summary_cols_dict[model_dtype_colname].strip()
@@ -891,51 +895,4 @@ class VersionedModelReader():
             plpy.execute("""
                     DROP VIEW IF EXISTS {0}, {1}
                 """.format(self.model_to_use, self.model_summary_to_use))
-
-    # def _get_model_id(self, model_id):
-    #     if model_id:
-    #         return model_id
-    #     return plpy.execute("""
-    #        SELECT max(model_id) AS id FROM {self.model_table_summary}
-    #        """.format(self=self))[0]['id']
-
-    # def _read_all_data(self):
-    #     self.model_data_dict = self._run_select_query(self.model_table)
-    #     self.model_summary_dict = self._run_select_query(self.model_table_summary)
-
-    # def _run_select_query(self, table):
-    #     if is_valid_psql_type(self.model_data_type, ONLY_ARRAY):
-    #         model_data_query = '{schema_madlib}._double_array_recv(model_data)'.\
-    #             format(self.schema_madlib)
-    #     elif is_valid_psql_type(self.model_data_type, BYTEA8):
-    #         model_data_query = "{schema_madlib}.bytea_to_bytea8(model_data)".\
-    #             format(self.schema_madlib)
-    #     else:
-    #         plpy.error("Cannot read model from model table. Unsupported "
-    #             "model data type {}".format(self.model_data_type))
-
-    #     res = plpy.execute("""
-    #                 SELECT model_id, metrics, model_metadata, model_type, {model_data_query}
-    #                 FROM {table}
-    #                 WHERE model_id={model_id}
-    #             """.format(model_id=self.model_id, **locals()))
-    #     if not res:
-    #         plpy.error("Model id ({0}) does not exist in {1}.".format(
-    #             self.model_id, table))
-    #     # Note that since this version does not support grouping, we can
-    #     # assume exactly one row to be the output of this query. Will change
-    #     # once grouping comes in.
-    #     return res[0]
-
-    # def get_model_data(self):
-    #     return self.model_data_dict['model_data']
-
-    # def get_metrics(self):
-    #     return self._from_json(self.model_data_dict['metrics'])
-
-    # def get_model_metadata(self):
-    #     return self._from_json(self.model_data_dict['model_metadata'])
-
-    # def get_summary(self):
-    #     return self._from_json(self.model_summary_dict['summary'])
 

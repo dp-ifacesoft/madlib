@@ -938,7 +938,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     independent_varname = py_list_to_sql_string(
         map(quote_literal, cat_features+con_features),
         array_type='text', long_format=True)
-    model_type = 'Decision Tree'
+    model_type = 'decision_tree'
     model_data_type = 'bytea8'
 
     # List of keys in JSON summary column. NOTE that these names must be the
@@ -1786,9 +1786,6 @@ def _validate_predict(schema_madlib, model, model_id, source, output,
             "Decision tree error: Data table ({0}) does not exist".format(source))
     _assert(not table_is_empty(source),
             "Decision tree error: Data table ({0}) is empty".format(source))
-    model_validator = VersionedModelTableValidator(
-        out_table=model, model_id=model_id)
-    model_validator.validate_model_tables_for_predict()
     # _assert(model and
     #         model.strip().lower() not in ('null', ''),
     #         "Decision tree error: Invalid model table name: {0}".format(model))
