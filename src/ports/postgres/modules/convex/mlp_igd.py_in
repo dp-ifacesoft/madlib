@@ -81,12 +81,11 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
     warm_start = bool(warm_start)
     optimizer_params = _get_optimizer_params(optimizer_param_str or "")
     summary_table = add_postfix(output_table, "_summary")
-    standardization_table = add_postfix(output_table, "_standardization")
     hidden_layer_sizes = hidden_layer_sizes or []
 
     _validate_args(source_table, output_table, summary_table,
-                   standardization_table, independent_varname,
-                   dependent_varname, hidden_layer_sizes, optimizer_params,
+                   independent_varname, dependent_varname,
+                   hidden_layer_sizes, optimizer_params,
                    warm_start, activation, grouping_col)
 
     tolerance = optimizer_params['tolerance']
@@ -141,8 +140,8 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
         col_ind_var_norm_new = MLPMinibatchPreProcessor.INDEPENDENT_VARNAME
         col_dep_var_norm_new = MLPMinibatchPreProcessor.DEPENDENT_VARNAME
         x_mean_table = mlp_preprocessor.std_table
-        num_input_nodes = get_col_dimension(source_table, independent_varname,
-                                            dim=2)
+        num_input_nodes = get_col_dimension(
+            source_table, independent_varname, dim=2)
         if is_classification:
             if pp_summary_dict["class_values"]:
                 classes = [quote_literal(c) for c in pp_summary_dict["class_values"]]
@@ -191,7 +190,7 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
             num_output_nodes = get_col_dimension(tbl_data_scaled,
                                                  dependent_varname, dim=1)
 
-    reserved_cols = ['coeff', 'loss', 'n_iterations']
+    reserved_cols = ['coeff', 'loss', 'n_iterations', 'mean', 'std']
     grouping_str, grouping_col = get_grouping_col_str(schema_madlib, 'MLP',
                                                       reserved_cols,
                                                       source_table,
@@ -201,7 +200,7 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
     col_grp_key = unique_string(desp='col_grp_key')
     if warm_start:
         coeff = _validate_warm_start(output_table, summary_table,
-                                     standardization_table, independent_varname,
+                                     independent_varname,
                                      dependent_varname_backup, layer_sizes,
                                      optimizer_params, is_classification,
                                      weights, warm_start, activation)
@@ -359,24 +358,17 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
     layer_sizes_str = PY2SQL(layer_sizes, array_type="integer")
 
     _create_summary_table(locals())
-    if is_minibatch_enabled:
-        # We already have the mean and std in the input standardization table
-        input_std_table = add_postfix(source_table, '_standardization')
-        _create_standardization_table(standardization_table, input_std_table,
-                                      warm_start)
-        # The original input table is the tab_data_scaled for mini batch.
-        # Do NOT drop tbl_data_scaled and x_mean_table with minibatch,
-        # it will end up dropping the original data table.
-    else:
-        _create_standardization_table(standardization_table, x_mean_table,
-                                      warm_start)
-        # Drop the following tables only for IGD.
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(tbl_data_scaled))
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(x_mean_table))
-
     _create_output_table(output_table, temp_output_table, grouping_col,
-                         warm_start)
+                         warm_start, x_mean_table)
     plpy.execute("DROP TABLE IF EXISTS {0}".format(temp_output_table))
+    # The original input table is the tab_data_scaled for mini batch.
+    # Do NOT drop tbl_data_scaled and x_mean_table with minibatch,
+    # it will end up dropping the original data table. Drop only when
+    # the input data is not minibatched.
+    if not is_minibatch_enabled:
+        # Drop the following tables only for IGD.
+        plpy.execute("DROP TABLE IF EXISTS {0}".format(x_mean_table))
+        plpy.execute("DROP TABLE IF EXISTS {0}".format(tbl_data_scaled))
     return None
 
 def normalize_data(args):
@@ -546,26 +538,32 @@ def _create_summary_table(args):
 
 
 def _create_output_table(output_table, temp_output_table,
-                         grouping_col, warm_start):
+                         grouping_col, warm_start, mean_std_table):
     grouping_col_comma = ''
     partition_by = ''
+    join_str_for_mean_std = ''
     if grouping_col:
         grouping_col_comma = grouping_col + ","
         partition_by = " PARTITION BY {0} ".format(grouping_col)
+        join_str_for_mean_std = """JOIN {mean_std_table}
+            USING ({grouping_col})
+        """.format(**locals())
+    else:
+        join_str_for_mean_std = ', {}'.format(mean_std_table)
     if warm_start:
         plpy.execute("DROP TABLE IF EXISTS {0}".format(output_table))
     build_output_query = """
         CREATE TABLE {output_table} AS
-            SELECT {grouping_col_comma} coeff, loss, num_iterations
+            SELECT {grouping_col_comma} coeff, loss, num_iterations, mean, std
             FROM (
                 SELECT {temp_output_table}.*,
                         row_number() OVER ({partition_by} ORDER BY loss) AS rank
                 FROM {temp_output_table}
             ) x
+            {join_str_for_mean_std}
             WHERE x.rank = 1;
     """.format(**locals())
     plpy.execute(build_output_query)
-
 
 def _update_temp_model_table(args, iteration, temp_output_table,
                              is_minibatch_enabled, first_try):
@@ -652,16 +650,13 @@ def _validate_summary_table(summary_table):
         'classes', 'layer_sizes', 'source_table'
     ], 'MLP')
 
-def _validate_warm_start(output_table, summary_table, standardization_table,
-                         independent_varname, dependent_varname, layer_sizes,
-                         optimizer_params, is_classification, weights,
-                         warm_start, activation):
+def _validate_warm_start(output_table, summary_table, independent_varname,
+                         dependent_varname, layer_sizes, optimizer_params,
+                         is_classification, weights, warm_start, activation):
     _assert(table_exists(output_table),
             "MLP error: Warm start failed due to missing model table: " + output_table)
     _assert(table_exists(summary_table),
             "MLP error: Warm start failed due to missing summary table: " + summary_table)
-    _assert(table_exists(standardization_table),
-            "MLP error: Warm start failed due to missing standardization table: " + standardization_table)
 
     _assert(optimizer_params["n_tries"] == 1,
             "MLP error: warm_start is only compatible for n_tries = 1")
@@ -748,15 +743,14 @@ def _validate_params_based_on_minibatch(source_table, independent_varname,
                             is_classification, is_minibatch_enabled)
 
 def _validate_args(source_table, output_table, summary_table,
-                   standardization_table, independent_varname,
-                   dependent_varname, hidden_layer_sizes, optimizer_params,
+                   independent_varname, dependent_varname,
+                   hidden_layer_sizes, optimizer_params,
                    warm_start, activation, grouping_col):
 
     input_tbl_valid(source_table, "MLP")
     if not warm_start:
         output_tbl_valid(output_table, "MLP")
         output_tbl_valid(summary_table, "MLP")
-        output_tbl_valid(standardization_table, "MLP")
 
     _assert(is_var_valid(source_table, independent_varname),
             "MLP error: invalid independent_varname "
@@ -905,14 +899,11 @@ def mlp_predict(schema_madlib, model_table, data_table, id_col_name,
                   For regression, only type='response' is defined.
     """
     input_tbl_valid(model_table, 'MLP')
-    cols_in_tbl_valid(model_table, ['coeff'], 'MLP')
+    cols_in_tbl_valid(model_table, ['coeff', 'mean', 'std'], 'MLP')
     summary_table = add_postfix(model_table, "_summary")
-    standardization_table = add_postfix(model_table, "_standardization")
     _validate_summary_table(summary_table)
 
     summary = plpy.execute("SELECT * FROM {0}".format(summary_table))[0]
-    coeff = PY2SQL(plpy.execute(
-        "SELECT * FROM {0}".format(model_table))[0]["coeff"])
     dependent_varname = _get_minibatch_param_from_mlp_model_summary(summary,
                             'dependent_varname', 'original_dependent_varname')
     independent_varname = _get_minibatch_param_from_mlp_model_summary(summary,
@@ -925,32 +916,14 @@ def mlp_predict(schema_madlib, model_table, data_table, id_col_name,
     is_response = int(pred_type == 'response')
     is_classification = int(summary["is_classification"])
     classes = summary['classes']
+    grouping_col = '' if summary['grouping_col']=='NULL' \
+                      else summary['grouping_col']
     # Set a flag to indicate that it is a classification model, with an array
     # as the dependent var. The only scenario where classification allows for
     # an array dep var is when the user has provided a one-hot encoded dep var
     # during training, and mlp_classification does not one-hot encode
     # (and hence classes column in model's summary table is NULL).
     is_dep_var_an_array_for_classification = int(is_classification and not classes)
-
-    # Fix to ensure that 1.12 models run on 1.13 or higher.
-    # As a result of adding grouping support in 1.13, some changes were
-    # made wrt standardization.
-    # The x_mean and x_std values were stored in the summary table itself in
-    # MADlib 1.12, and they were named as "x_means" and "x_stds".
-    # From MADlib 1.13 onwards, these parameters were moved to the
-    # _standardization table, and were renamed to "mean" and "std".
-    if 'grouping_col' in summary:
-        # This model was created in MADlib 1.13 or greater version
-        is_pre_113_model = False
-        grouping_col = '' if summary['grouping_col']=='NULL' \
-                        else summary['grouping_col']
-    else:
-        # This model was created in MADlib 1.12. Grouping was not
-        # supported in 1.12, but was added later in 1.13.
-        is_pre_113_model = True
-        grouping_col = ''
-        # Validate the summary table created with the 1.12 MLP model table.
-        cols_in_tbl_valid(summary_table, ['x_means', 'x_stds'], 'MLP')
 
     pred_name = (('"prob_{0}"' if pred_type == "prob" else '"estimated_{0}"').
                  format(dependent_varname.replace('"', '').strip()))
@@ -974,12 +947,8 @@ def mlp_predict(schema_madlib, model_table, data_table, id_col_name,
     grouping_col_comma = ""
     join_str = ''
     grouping_col_list = split_quoted_delimited_str(grouping_col)
-    if not is_pre_113_model:
-        _validate_standardization_table(standardization_table, grouping_col_list)
     if grouping_col:
         join_str = """JOIN {model_table}
-            USING ({grouping_col})
-            JOIN {standardization_table}
             USING ({grouping_col})
         """.format(**locals())
         group_by = ', '.join(['{0}.{1}'.format(data_table, col)
@@ -991,27 +960,17 @@ def mlp_predict(schema_madlib, model_table, data_table, id_col_name,
         grouping_col_comma = grouping_col+","
 
         coeff_column = "{model_table}.coeff::DOUBLE PRECISION[]".format(**locals())
-        mean_col = "{standardization_table}.mean".format(**locals())
-        std_col = "{standardization_table}.std".format(**locals())
+        mean_col = "{model_table}.mean::DOUBLE PRECISION[]".format(**locals())
+        std_col = "{model_table}.std::DOUBLE PRECISION[]".format(**locals())
     else:
         # if not grouping, then directly read out the coeff, mean
-        # and std values from the model and standardization tables.
-        if is_pre_113_model:
-            # Get mean and std from the summary table
-            standardization = plpy.execute("""
-                    SELECT x_means AS mean, x_stds AS std
-                    FROM {0}
-                """.format(summary_table))[0]
-        else:
-            # Get mean and std from the standardization table
-            standardization = plpy.execute("""
-                    SELECT mean, std
-                    FROM {0}
-                """.format(standardization_table))[0]
+        # and std values from the model table.
         coeff = PY2SQL(plpy.execute(
             "SELECT coeff FROM {0}".format(model_table))[0]["coeff"])
-        x_means = PY2SQL(standardization['mean'], array_type="DOUBLE PRECISION")
-        x_stds = PY2SQL(standardization['std'], array_type="DOUBLE PRECISION")
+        x_means = PY2SQL(plpy.execute(
+            "SELECT mean FROM {0}".format(model_table))[0]["mean"])
+        x_stds = PY2SQL(plpy.execute(
+            "SELECT std FROM {0}".format(model_table))[0]["std"])
 
         coeff_column = "{coeff}".format(**locals())
         mean_col = "{x_means}".format(**locals())
