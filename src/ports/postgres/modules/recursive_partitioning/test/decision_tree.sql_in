@@ -584,7 +584,7 @@ SELECT madlib.tree_surr_display('train_output');
 
 
 DROP TABLE IF EXISTS train_output, train_output_summary;
-SELECT madlib.tree_train('dt_golf',
+SELECT tree_train('dt_golf',
 'train_output',
 'id',
 'class',
@@ -598,10 +598,62 @@ NULL::text,
 1,
 10);
 
+SELECT assert
+(
+    source_table                = 'dt_golf' AND
+    model_table                 = 'train_output' AND
+    dependent_varname           = 'class' AND
+    independent_varname         = $${"\"OUTLOOK\"", windy, temperature}$$ AND
+    grouping_col                is NULL AND
+    is_classification           = 't' AND
+    id_col_name                 = 'id' AND
+    cat_features                = $${"\"OUTLOOK\"", windy}$$ AND
+    con_features                = '{temperature}' AND
+    num_all_groups              = 1 AND
+    num_failed_groups           = 0 AND
+    total_rows_processed        = 16 AND
+    total_rows_skipped          = 0 AND
+    dependent_var_levels        = $${"Don't Play",Play}$$ AND
+    dependent_var_type          = 'text' AND
+    independent_var_types       = $${text, boolean, "double precision"}$$ AND
+    input_cp                    = 0 AND
+    n_folds                     = 0 AND
+    null_proxy                  is NULL AND
+    features_to_include         = '"OUTLOOK", temperature, windy' AND --TODO fix order
+    features_to_exclude         is NULL AND -- TODO change this to NULL and
+    -- fix order
+    method                      = 'tree_train',
+    'Summary Validation failed. Actual:' || summary
+) from (select * from train_output_summary) summary;
 DROP TABLE IF EXISTS prediction_results;
 SELECT madlib.tree_predict('train_output', 'dt_golf', 'prediction_results', 'prob');
+
+-- Test for features to exclude
+DROP TABLE IF EXISTS train_output, train_output_summary;
+SELECT tree_train('dt_golf',
+'train_output',
+'id',
+'class',
+'*',
+'"OUTLOOK"',
+'gini',
+NULL::text,
+NULL::text,
+5,
+3,
+1,
+10);
+
+SELECT assert
+(
+    features_to_include         = '*' AND
+    features_to_exclude         = '"OUTLOOK"' ,
+    'Summary Validation failed. Actual:' || summary
+) from (select features_to_include, features_to_exclude from
+train_output_summary) summary;
+
 ------------------------------------------------------------------
--- Test for Model versioning
+---------------------------- Test for Model versioning -----------
 ------------------------------------------------------------------
 -- Call tree_train multiple times without dropping the output table.
 -- Assert that it creates the view and the repo table along with the summary table
@@ -622,7 +674,7 @@ SELECT madlib.tree_train('mt_cars',         -- source table
                          'max_surrogates=2',-- number of surrogates
                          NULL,'train_repo','model 1','desc 1');
 
-SELECT assert(max_model_id = 1 , 'The highest model_id should have been 1.')
+SELECT assert(max_model_id = 1 , 'Max model_id should have been 1.')
 FROM (SELECT max(model_id) AS max_model_id FROM train_repo) s;
 
 -- predict using the view.
@@ -643,42 +695,40 @@ SELECT tree_train('dt_golf',         -- source table
                    2,                 -- min bucket
                    3,                 -- number of bins per continuous variable
                    NULL,NULL,NULL,'train_repo','name 2','desc 2');
-\x on
-select * from train_view_summary;
 
--- assert scalar cols in summary table
+-- assert cols in summary table
 SELECT assert
 (
-    dependent_varname           = 'class' AND
-    id_col_name                 = 'id' AND
+    model_type                  = 'decision_tree' AND
+    start_training_time         < now() AND
+    end_training_time           > start_training_time  AND
     source_table                = 'dt_golf' AND
-    total_rows_processed        = 16 AND
-    total_rows_skipped          = 0 AND
-    n_folds                     = 0 AND
-    null_proxy                  is NULL AND
-    num_groups                  = 1 AND
-    num_all_groups              = 1 AND
-    dependent_var_type          = 'text' AND
-    is_classification           = 't' AND
-    method                      = 'tree_train' AND
-    num_failed_groups           = 0 AND
-    input_cp                    = 0 AND
     model_table                 = 'train_view' AND
     model_repository            = 'train_repo' AND
-    features_to_include            = '"OUTLOOK", temperature' AND
-    features_to_exclude is NULL,
-    'Summary Validation failed for special chars. Actual:' || summary
-) from (select * from train_view_summary) summary;
--- assert array cols in summary table
-SELECT assert
-(
-    grouping_col               is NULL AND
-    independent_varname        = $${"\"OUTLOOK\"", temperature}$$ AND
-    con_features                = '{temperature}' AND
+    dependent_varname           = 'class' AND
+    independent_varname         = $${"\"OUTLOOK\"", temperature}$$ AND
+    grouping_col                is NULL AND
+    name                        = 'name 2' AND
+    description                 = 'desc 2' AND
+    madlib_version              is NOT NULL AND
+    is_classification           = 't' AND
+    id_col_name                 = 'id' AND
     cat_features                = $${"\"OUTLOOK\""}$$ AND
+    con_features                = '{temperature}' AND
+    num_all_groups              = 1 AND
+    num_failed_groups           = 0 AND
+    total_rows_processed        = 16 AND
+    total_rows_skipped          = 0 AND
+    dependent_var_levels        = $${"Don't Play",Play}$$ AND
+    dependent_var_type          = 'text' AND
     independent_var_types       = $${text,"double precision"}$$ AND
-    dependent_var_levels        = $${"Don't Play",Play}$$,
-    'Summary Validation failed for special chars. Actual:' || summary
+    input_cp                    = 0 AND
+    n_folds                     = 0 AND
+    null_proxy                  is NULL AND
+    features_to_include         = '"OUTLOOK", temperature' AND
+    features_to_exclude         is NULL AND
+    method                      = 'tree_train',
+    'Summary Validation failed. Actual:' || summary
 ) from (select * from train_view_summary) summary;
 
 SELECT model_id, attributes, model_data, model_type FROM train_repo;
@@ -719,3 +769,31 @@ DROP TABLE IF EXISTS prediction_results;
 SELECT madlib.tree_predict('train_view', 'dt_golf', 'prediction_results', 'prob');
 DROP TABLE IF EXISTS prediction_results;
 SELECT madlib.tree_predict('train_repo', 'dt_golf', 'prediction_results', 'prob', 3);
+
+-- Assert name and desc are null
+SELECT tree_train('dt_golf',         -- source table
+                   'train_view',    -- output model table
+                   'id',              -- id column
+                   'class',           -- response
+                   '"OUTLOOK", temperature',   -- features
+                   NULL,        -- exclude columns
+                   'gini',            -- split criterion
+                   NULL,            -- grouping
+                   NULL,        -- no weights, all observations treated equally
+                   NULL,                 -- max depth
+                   6,                 -- min split
+                   2,                 -- min bucket
+                   3,                 -- number of bins per continuous variable
+                   NULL,NULL,NULL,'train_repo');
+SELECT assert
+(
+    name                        is NULL AND
+    description                 is NULL,
+    'Summary Validation failed. Actual:' || summary
+) from (select name, description from train_view_summary) summary;
+
+SELECT assert
+(
+    model_data_type             = 'bytea8',
+    'Summary Validation failed. Actual:' || summary
+) from (select model_data_type from train_repo_summary) summary;

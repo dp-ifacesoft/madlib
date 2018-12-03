@@ -910,7 +910,6 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     cat_n = bins['cat_n']
     cat_features = bins['cat_features']
     con_features = bins['con_features']
-    num_groups = 1
     num_failed_groups = int(tree_state['finished'] != 1)  # 1 if failed, 0 if succeeded
     total_rows_processed = n_rows
     total_rows_skipped = n_all_rows - n_rows
@@ -945,8 +944,7 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
     # same as the corresponding variable names.
     dt_summary_json_fields = [
         'is_classification', 'id_col_name',
-        'cat_features', 'con_features',
-        'num_groups', 'num_failed_groups',
+        'cat_features', 'con_features', 'num_failed_groups',
         'features_to_include', 'features_to_exclude',
         'total_rows_processed', 'total_rows_skipped',
         'dependent_var_levels', 'dependent_var_type',
@@ -1722,9 +1720,13 @@ def _create_summary_table(
     else:
         grouping_col_str = "NULL"
     n_rows_skipped = n_all_rows - n_rows
+    if features_to_exclude:
+        features_to_exclude = "'{}'".format(features_to_exclude)
+    else:
+        features_to_exclude = "NULL"
 
     if isinstance(cp, Iterable):
-        input_cp = py_list_to_sql_stri(cp, 'double precision')
+        input_cp = py_list_to_sql_stri(cp, 'double precision') # TODO add a test
     else:
         input_cp = str(cp) + "::double precision"
 
@@ -1742,7 +1744,7 @@ def _create_summary_table(
                 '{output_table_name}'::text    AS model_table,
                 '{id_col_name}'::text          AS id_col_name,
                 '{features_to_include}'::text     AS features_to_include,
-                '{features_to_exclude}'::text     AS features_to_exclude,
+                {features_to_exclude}::text     AS features_to_exclude,
                 '{dependent_variable}'::text   AS dependent_varname,
                 {independent_varname}         AS independent_varname,
                 {cat_features_array}           AS cat_features,
