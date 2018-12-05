@@ -52,14 +52,25 @@ RETURNS VOID AS $$
     from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadding2D, Activation
     from keras.optimizers import Adam, SGD
     from keras import backend as K
-    from keras.regularizers import l2 
+    from keras.regularizers import l2
     from keras.layers import Input
     from keras.applications.imagenet_utils import _obtain_input_shape
     from keras.models import Model
+    from keras.models import model_from_json
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
 
     n_classes = 10
+
+    def deserialize(state,model_shapes):
+        weightsList = []
+        j = 0
+        for a in filter(None,state.split('splitter')):
+            arr = np.fromstring(a, dtype=np.float32)
+            weightsList.append(arr.reshape(model_shapes[j]))
+            j+=1
+
+        return weightsList
 
     def create_model_architecture(n_classes):
         model = Sequential()
@@ -133,72 +144,72 @@ RETURNS VOID AS $$
                                       require_flatten=True)
 
         inputs = Input(shape=input_shape)
- 
+
         # Block 1
         x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block1_conv1')(inputs)
-    
+
         x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block1_conv2')(x)
-    
+
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block1_pool", padding='valid')(x)
-    
+
         # Block 2
         x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block2_conv1')(x)
-    
+
         x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block2_conv2')(x)
-    
+
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block2_pool", padding='valid')(x)
-    
+
         # Block 3
         x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block3_conv1')(x)
-    
+
         x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block3_conv2')(x)
-    
+
         x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block3_conv3')(x)
-    
+
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block3_pool", padding='valid')(x)
-    
+
         # Block 4
         x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block4_conv1')(x)
-    
+
         x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block4_conv2')(x)
-    
+
         x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block4_conv3')(x)
-    
+
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block4_pool", padding='valid')(x)
-    
+
         # Block 5
         x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block5_conv1')(x)
-    
+
         x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block5_conv2')(x)
-    
+
         x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block5_conv3')(x)
-    
+
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block5_pool", padding='valid')(x)
 
         # Classification block
@@ -208,7 +219,7 @@ RETURNS VOID AS $$
 
         x = Dense(4096, activation='relu', name='fc2')(x)
         x = Dropout(0.5, name='drop_fc2')(x)
-        
+
         x = Dense(n_classes, activation='softmax', name="predictions")(x)
 
         model = Model(inputs, x, name='vgg16-places365')
@@ -219,8 +230,6 @@ RETURNS VOID AS $$
         model.summary()
 
         model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
-#        parallel_model = keras.utils.multi_gpu_model(model, gpus=2)
-#        parallel_model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
 
         return model
 
@@ -286,7 +295,6 @@ RETURNS VOID AS $$
         model_string += 'splitter'
         model_shapes.append(a.shape)
 
-    del model
     print("Garbage collection in keras_run: {}".format(gc.collect()))
     K.clear_session()
     sess = K.get_session()
@@ -303,12 +311,12 @@ RETURNS VOID AS $$
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         weightsList = []
-        j = 0
-        for a in filter(None,model_string.split('splitter')):
-            weightsList.append(np.fromstring(a,dtype='float32').reshape(model_shapes[j]))
-            j+=1
-        model_eval.set_weights(weightsList)
-        agg_score = model_eval.evaluate(all_x_test, all_y_test, verbose=0)[1]
+        weightsList = deserialize(model_string,model_shapes)
+        eval_model = model_from_json(model_arch)
+        eval_model.set_weights(weightsList)
+        eval_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+            loss='categorical_crossentropy', metrics=['accuracy'])
+        agg_score = eval_model.evaluate(all_x_test, all_y_test, verbose=0)[1]
         plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
         agg_scores.append(agg_score)
 
@@ -337,11 +345,17 @@ $$
 import plpy
 import os
 
+gpus_per_seg=1
+segments_per_host=4
+#device_name = '/gpu:{}'.format(seg % segments_per_host)
+device_name = '/gpu:0'
+
 if "CUDA_VISIBLE_DEVICES" in os.environ:
     plpy.info("CUDA_VISIBLE_DEVICES={}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
 else:
     plpy.info("CUDA_VISIBLE_DEVICES not set while loading keras in cnn_keras_transition")
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+# Don't let tensorflow see anything but the 1 GPU we're supposed to use
+os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % segments_per_host)
 
 import numpy as np
 import keras
@@ -373,9 +387,6 @@ def deserialize(state,model_shapes):
 
 real_start = time.time()
 
-gpus_per_seg=1
-segments_per_host=4
-device_name = '/gpu:{}'.format(seg % segments_per_host)
 
 plpy.info('Device we are using is: {}'.format(device_name))
 #        config = tf.ConfigProto(intra_op_parallelism_threads=4,
@@ -397,7 +408,6 @@ else:
 keras_model = model_from_json(architecture)
 model_shapes = []
 
-
 with K.tf.device(device_name):
     for a in keras_model.get_weights():
         model_shapes.append(a.shape)
@@ -408,17 +418,9 @@ weightsList = deserialize(serialized_state,model_shapes)
 after_deser = time.time()
 with K.tf.device(device_name):
     keras_model.set_weights(weightsList)
+
 prep_1 = time.time()  # set weights
 
-#gpu_arg = [seg%segments_per_host+i*segments_per_host for i in range(gpus_per_seg)]
-#try:
-#    if gpus_per_seg < 2:
-#        raise(ValueError)
-#    parallel_model = keras.utils.multi_gpu_model(keras_model, gpus=gpu_arg)
-#    plpy.info("Training using GPU's")
-#except ValueError:
-#    # This segment doesn't have GPU's enabled
-parallel_model = keras_model
 if gpus_per_seg==1:
     plpy.info("Training using 1 GPU")
 else:
@@ -433,11 +435,6 @@ elif gpus_per_seg==1:
     with K.tf.device(device_name):
         keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
             loss='categorical_crossentropy', metrics=['accuracy'])
-else:
-    pass
-#    parallel_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-#        loss='categorical_crossentropy',
-#        metrics=['accuracy'],options=run_options)
 
 prep_3 = time.time() # compile()
 if ind_var == None:
@@ -467,7 +464,7 @@ else:
         plpy.info("fitting now with CPU's only")
     else:
         plpy.info("fitting now with multi GPU model")
-    parallel_model.fit(x_train, y_train,
+    keras_model.fit(x_train, y_train,
                batch_size=25,
                epochs=1,
                verbose=0)
