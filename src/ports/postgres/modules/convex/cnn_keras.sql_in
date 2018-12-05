@@ -57,21 +57,11 @@ RETURNS VOID AS $$
     from keras.applications.imagenet_utils import _obtain_input_shape
     from keras.models import Model
 
-    gpus_per_seg=0  # Set to 0 for CPU only
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
-    if gpus_per_seg==0:
-        import os
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
-    else:
-        import tensorflow as tf
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        sess = tf.Session(config=config)
-        run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
 
     n_classes = 10
 
-    def create_model_architecture(n_classes,gpus_per_seg):
+    def create_model_architecture(n_classes):
         model = Sequential()
 
 #        model.add(ZeroPadding2D((1, 1), input_shape=(224,224,3)))
@@ -226,59 +216,50 @@ RETURNS VOID AS $$
 
 ##########
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
-        # model.summary()
+        model.summary()
 
-        parallel_model = model
+        model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
+#        parallel_model = keras.utils.multi_gpu_model(model, gpus=2)
+#        parallel_model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
 
-        if gpus_per_seg==0:
-            model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
-        elif gpus_per_seg==1:
-            model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
-        else:
-            parallel_model = keras.utils.multi_gpu_model(model, gpus=2)
-            parallel_model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'],options=run_options)
+        return model
 
-        return {"model" : model, "parallel_model" : parallel_model}
+    model = create_model_architecture(n_classes)
 
-    #with tf.device("/cpu:0"):
-    model_template = create_model_architecture(n_classes,gpus_per_seg)
+    sql_test_x = """
+    SELECT x, y FROM {0} LIMIT 500""".format(test_table)
+    plpy.info('Test sql is : {0}'.format(sql_test_x))
+    testData = plpy.execute(sql_test_x)
+    plpy.info('finished running select query')
+    after_select = time.time();
 
-    model = model_template["model"]
-    parallel_model = model_template["parallel_model"]
+    all_x_test = np.ndarray((0,5,150528))
+    all_y_test = np.ndarray((0,5))
+    for i in range(len(testData)):
+        x_test = np.asarray((testData[i]['x'],))
+        y_test = np.asarray((testData[i]['y'],))
+        if i < 2:
+            plpy.info('i : {0}'.format(i))
+            plpy.info('X shape : {0}'.format(x_test.shape))
+            plpy.info('Y shape : {0}'.format(y_test.shape))
+        all_x_test=np.concatenate((all_x_test, x_test))
+        all_y_test=np.concatenate((all_y_test, y_test))
 
-#    sql_test_x = """
-#        SELECT x, y FROM {0} limit 2
-#        """.format(test_table)
-#    plpy.info('Test sql is : {0}'.format(sql_test_x))
-#    testData = plpy.execute(sql_test_x)
-#    plpy.info('finished running select query')
+    num_test_examples = all_x_test.shape[0]
+    all_x_test = all_x_test.reshape(5*num_test_examples, 224,224,3)
+    all_x_test = all_x_test.astype('float32')
+    all_y_test = all_y_test.reshape(5*num_test_examples)
+    plpy.info('X shape : {0}'.format(all_x_test.shape))
+    plpy.info('Y shape : {0}'.format(all_y_test.shape))
+    all_x_test /= 255.0
+    all_y_test = keras.utils.to_categorical(all_y_test,n_classes)
 
+    eval_start = time.time()
+    plpy.info("Time to prepare test data = {}".format(eval_start - after_select));
 
-#    all_x_test = np.ndarray((0,150528))
-#    all_y_test = np.ndarray((0))
-#    for i in range(len(testData)):
-#        x_test = np.asarray((testData[i]['x'],))
-#        y_test = np.asarray((testData[i]['y'],))
-#        #plpy.info('i : {0}'.format(i))
-#        #plpy.info('X shape : {0}'.format(x_test.shape))
-#        #plpy.info('Y shape : {0}'.format(y_test.shape))
-#        all_x_test=np.concatenate((all_x_test, x_test))
-#        all_y_test=np.concatenate((all_y_test, y_test))
-#
-#    num_test_examples = all_x_test.shape[0]
-#    all_x_test = all_x_test.reshape(num_test_examples, 224,224,3)
-#    all_x_test = all_x_test.astype('float32')
-#    all_y_test = all_y_test.reshape(num_test_examples)
-#    plpy.info('X shape : {0}'.format(all_x_test.shape))
-#    plpy.info('Y shape : {0}'.format(all_y_test.shape))
-#    all_x_test /= 255.0
-#    all_y_test = keras.utils.to_categorical(all_y_test,n_classes)
-
-#    eval_start = time.time()
-#    with tf.device("/cpu:0"):
-#        parallel_model.evaluate(all_x_test, all_y_test, verbose=0)
-#    eval_time = time.time()
-#    plpy.info("time to evaluate model = {0}".format(eval_time-eval_start))
+    model.evaluate(all_x_test, all_y_test, verbose=1)
+    eval_time = time.time()
+    plpy.info("Time to evaluate model = {0}".format(eval_time-eval_start))
 
     agg_scores = []
     model_arch = model.to_json()
@@ -300,21 +281,16 @@ RETURNS VOID AS $$
     model_string = ''
     start_time = time.time()
     model_shapes = []
-    #with tf.device("/cpu:0"):
     for a in model.get_weights():
         model_string += a.tostring()
         model_string += 'splitter'
         model_shapes.append(a.shape)
 
-    model
-    parallel_model
-    del model_template
+    del model
     print("Garbage collection in keras_run: {}".format(gc.collect()))
     K.clear_session()
     sess = K.get_session()
     sess.close()
-#    endtime = time.time()
-#    plpy.info('String dump time : {0} {1}'.format(endtime-start_time, len(filter(None,model_string.split('splitter')))))
     plpy.info("Model state size: {}MB".format(len(model_string)/1024/1024))
     start_time = time.time()
     for i in range(N_ITERATIONS):
@@ -326,15 +302,13 @@ RETURNS VOID AS $$
             plpy.error('plpy exception')
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
-#        model_eval = model_template["parallel_model"]
         weightsList = []
         j = 0
         for a in filter(None,model_string.split('splitter')):
             weightsList.append(np.fromstring(a,dtype='float32').reshape(model_shapes[j]))
             j+=1
-#        model_eval.set_weights(weightsList)
-#        with tf.device("/cpu:0"):
-#            agg_score = model_eval.evaluate(all_x_test, all_y_test, verbose=0)[1]
+        model_eval.set_weights(weightsList)
+        agg_score = model_eval.evaluate(all_x_test, all_y_test, verbose=0)[1]
         plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
         agg_scores.append(agg_score)
 
@@ -359,9 +333,17 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
     previous_state      BYTEA
 ) RETURNS BYTEA AS
 $$
-import numpy as np
 
 import plpy
+import os
+
+if "CUDA_VISIBLE_DEVICES" in os.environ:
+    plpy.info("CUDA_VISIBLE_DEVICES={}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+else:
+    plpy.info("CUDA_VISIBLE_DEVICES not set while loading keras in cnn_keras_transition")
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+
+import numpy as np
 import keras
 import json
 import time
@@ -371,8 +353,13 @@ from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadd
 from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
 from keras import backend as K
-import tensorflow as tf
-import os
+from tensorflow.python.client import device_lib
+
+avail = device_lib.list_local_devices()
+plpy.info("Available devices on system according to tensorflow: {}".format(len(avail)))
+for dev in avail:
+    plpy.info("name: {}, type: {}, memory_limit: {}MB".format(dev.name,dev.device_type,dev.memory_limit/1024/1024))
+
 
 def deserialize(state,model_shapes):
     weightsList = []
@@ -390,104 +377,104 @@ gpus_per_seg=1
 segments_per_host=4
 device_name = '/gpu:{}'.format(seg % segments_per_host)
 
+plpy.info('Device we are using is: {}'.format(device_name))
+#        config = tf.ConfigProto(intra_op_parallelism_threads=4,
+#           inter_op_parallelism_threads=4,
+#           device_count = {'CPU' : 8, 'GPU' : 1})
+config = K.tf.ConfigProto(log_device_placement=True,device_count = {'CPU' : 8, 'GPU' : 4})
+config.gpu_options.allow_growth = False
+#  the following only lets tensorflow/keras see this specific GPU--no "with" contexts needed later
+#config.gpu_options.visible_device_list = str(seg % segments_per_host)
+config.gpu_options.per_process_gpu_memory_fraction = 0.9
+session = K.tf.Session(config=config)
+K.set_session(session)
+
+if not state:
+    # model needs to be initialized
+    serialized_state = previous_state
+else:
+    serialized_state = state
+keras_model = model_from_json(architecture)
+model_shapes = []
+
+
 with K.tf.device(device_name):
-    plpy.info('Device we are using is: {}'.format(device_name))
-    if gpus_per_seg==0:
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
-    else:
-        #        config = tf.ConfigProto(intra_op_parallelism_threads=4,
-        #           inter_op_parallelism_threads=4, allow_soft_placement=True,
-        #           device_count = {'CPU' : 8, 'GPU' : 1})
-        config = tf.ConfigProto(log_device_placement=True)
-        config.gpu_options.allow_growth = True
-#        config.gpu_options.per_process_gpu_memory_fraction = 1
-        session = tf.Session(config=config)
-        K.set_session(session)
-
-        #    config = tf.ConfigProto()
-        #    sess = tf.Session(config=config)
-        #    run_options = tf.RunOptions(report_tensor_allocations_upon_oom = True)
-
-    if not state:
-        # model needs to be initialized
-        serialized_state = previous_state
-    else:
-        serialized_state = state
-    keras_model = model_from_json(architecture)
-    model_shapes = []
     for a in keras_model.get_weights():
         model_shapes.append(a.shape)
 
-    plpy.info("Transition STARTED")
-    start = time.time()
-    weightsList = deserialize(serialized_state,model_shapes)
-    after_deser = time.time()
+plpy.info("Transition STARTED")
+start = time.time()
+weightsList = deserialize(serialized_state,model_shapes)
+after_deser = time.time()
+with K.tf.device(device_name):
     keras_model.set_weights(weightsList)
-    prep_1 = time.time()  # set weights
+prep_1 = time.time()  # set weights
 
-    #gpu_arg = [seg%segments_per_host+i*segments_per_host for i in range(gpus_per_seg)]
-    #try:
-    #    if gpus_per_seg < 2:
-    #        raise(ValueError)
-    #    parallel_model = keras.utils.multi_gpu_model(keras_model, gpus=gpu_arg)
-    #    plpy.info("Training using GPU's")
-    #except ValueError:
-    #    # This segment doesn't have GPU's enabled
-    parallel_model = keras_model
-    if gpus_per_seg==1:
-        plpy.info("Training using 1 GPU")
-    else:
-        plpy.info("Training using CPU's only")
+#gpu_arg = [seg%segments_per_host+i*segments_per_host for i in range(gpus_per_seg)]
+#try:
+#    if gpus_per_seg < 2:
+#        raise(ValueError)
+#    parallel_model = keras.utils.multi_gpu_model(keras_model, gpus=gpu_arg)
+#    plpy.info("Training using GPU's")
+#except ValueError:
+#    # This segment doesn't have GPU's enabled
+parallel_model = keras_model
+if gpus_per_seg==1:
+    plpy.info("Training using 1 GPU")
+else:
+    plpy.info("Training using CPU's only")
 
-    prep_2 = time.time()  # multi_gpu_model
-    # We must run model.compile again, after obtaining the architecutre.
-    if gpus_per_seg==0:
+prep_2 = time.time()  # multi_gpu_model
+# We must run model.compile again, after obtaining the architecutre.
+if gpus_per_seg==0:
+    keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+        loss='categorical_crossentropy', metrics=['accuracy'])
+elif gpus_per_seg==1:
+    with K.tf.device(device_name):
         keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
             loss='categorical_crossentropy', metrics=['accuracy'])
-    elif gpus_per_seg==1:
-        keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-            loss='categorical_crossentropy', metrics=['accuracy'])
-    else:
-        pass
-    #    parallel_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-    #        loss='categorical_crossentropy',
-    #        metrics=['accuracy'],options=run_options)
+else:
+    pass
+#    parallel_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+#        loss='categorical_crossentropy',
+#        metrics=['accuracy'],options=run_options)
 
-    prep_3 = time.time() # compile()
-    if ind_var == None:
-       return None
-    #plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
-    x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
-    # Figure out why this is necessary, but IT IS necessary!
-    x_train /= 255.0
-    y_train = np.array(dep_var)
-    n_classes = 10
-    mid = time.time() # convert x,y input to numpy arrays
-    y_train = keras.utils.to_categorical(y_train,n_classes)
+prep_3 = time.time() # compile()
+if ind_var == None:
+   return None
+#plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
+x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
+# Figure out why this is necessary, but IT IS necessary!
+x_train /= 255.0
+y_train = np.array(dep_var)
+n_classes = 10
+mid = time.time() # convert x,y input to numpy arrays
+y_train = keras.utils.to_categorical(y_train,n_classes)
 
-    #plpy.info("y train shape is {0}".format(y_train.shape))
+#plpy.info("y train shape is {0}".format(y_train.shape))
 
-    plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy arrays {}".format(prep_1 - after_deser, prep_2 - prep_1, prep_3-prep_2, mid-prep_3))
+plpy.info("Prep times: set weights {}, multi gpu {}, compile {}, x,y to numpy arrays {}".format(prep_1 - after_deser, prep_2 - prep_1, prep_3-prep_2, mid-prep_3))
 
-    if gpus_per_seg==1:
-        plpy.info("fitting now with 1 GPU per segment")
-    #    with tf.device("/gpu:{}".format(seg%segments_per_host)):
+if gpus_per_seg==1:
+    plpy.info("fitting now with 1 GPU per segment")
+    with K.tf.device(device_name):
         keras_model.fit(x_train, y_train,
+           batch_size=25,
+           epochs=1,
+           verbose=0)
+else:
+    if gpus_per_seg==0:
+        plpy.info("fitting now with CPU's only")
+    else:
+        plpy.info("fitting now with multi GPU model")
+    parallel_model.fit(x_train, y_train,
                batch_size=25,
                epochs=1,
                verbose=0)
-    else:
-        if gpus_per_seg==0:
-            plpy.info("fitting now with CPU's only")
-        else:
-            plpy.info("fitting now with multi GPU model")
-        parallel_model.fit(x_train, y_train,
-                   batch_size=25,
-                   epochs=1,
-                   verbose=0)
-    end = time.time()
-    plpy.info("done with fit")
-    model_string = ''
+end = time.time()
+plpy.info("done with fit")
+model_string = ''
+with K.tf.device(device_name):
     weights = keras_model.get_weights()
 
 del keras_model
@@ -498,12 +485,12 @@ del y_train
 sess = K.get_session()
 K.clear_session()
 sess.close()
+del K
 plpy.info("Garbage collection 1 in cnn_keras_transition: {}".format(gc.collect()))
 
-with tf.device("cpu:0"):
-    for a in weights:
-        model_string += a.tostring()
-        model_string += "splitter"
+for a in weights:
+    model_string += a.tostring()
+    model_string += "splitter"
 
 del weights
 
@@ -529,11 +516,11 @@ import numpy as np
 import time
 import plpy
 
-plpy.info("Starting merge")
+plpy.info("Starting merge",0)
 merge_start = time.time()
 
 if not state1 or not state2:
-    plpy.info("Returning from merge early (only 1 state passed)")
+    plpy.info("Returning from merge early","(only 1 state passed)")
     return state1 or state2
 
 weights1 = [np.fromstring(a,dtype='float32') for a in filter(None,state1.split('splitter'))]
