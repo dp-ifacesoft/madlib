@@ -2637,7 +2637,7 @@ are of type TEXT):
 The output summary table ('output_table_summary') has the following columns:
     'method'                -- Method name: 'tree_train'
     'source_table'          -- Data table name
-    'model_table'           -- Tree model table name
+    'output_model'           -- Tree model table name
     'id_col_name'           -- Name of the 'id' column
     is_classification       -- Boolean value indicating if tree is classification or regression
     'dependent_varname'     -- Response variable column name

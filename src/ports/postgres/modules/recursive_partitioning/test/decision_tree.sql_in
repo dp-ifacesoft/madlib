@@ -703,7 +703,7 @@ SELECT assert
     start_training_time         < now() AND
     end_training_time           > start_training_time  AND
     source_table                = 'dt_golf' AND
-    model_table                 = 'train_view' AND
+    output_model                = 'train_view' AND
     model_repository            = 'train_repo' AND
     dependent_varname           = 'class' AND
     independent_varname         = $${"\"OUTLOOK\"", temperature}$$ AND

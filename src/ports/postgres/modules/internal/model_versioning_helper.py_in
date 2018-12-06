@@ -45,7 +45,7 @@ class ModelRepoSummaryCols():
     START_TRAIN_TIME_COLNAME = 'start_training_time'
     END_TRAIN_TIME_COLNAME = 'end_training_time'
     SOURCE_TABLE_COLNAME = 'source_table'
-    MODEL_TABLE_COLNAME = 'model_table'
+    MODEL_TABLE_COLNAME = 'output_model'
     MODEL_REPO_COLNAME = 'model_repository'
     DEPENDENT_COLNAME = 'dependent_varname'
     INDEPENDENT_COLNAME = 'independent_varname'
