@@ -744,6 +744,7 @@ class VersionedModelWriter(object):
                                                  validate_tables=False)
         view_creator.create_view()
 
+    #TODO why is this not in the validator
     def _validate_repo_summary_cols(self, summary_cols_from_module):
         missing_cols = [k for k in summary_cols_from_module.keys()
             if k not in
@@ -845,7 +846,7 @@ class VersionedModelWriter(object):
             return json.dumps(json_dict)
         return '{}'
 
-class VersionedModelReader():
+class VersionedModelReader(object):
     """
         Class that exposes functions to read models from repository table.
     """
