@@ -46,72 +46,96 @@ class VersionedModelTableValidator(object):
         Class to validate model tables. This can validate both regular model
         tables, and also versioned model tables.
     """
-    def __init__(self, out_table=None, model_repository_table=None,
-                 model_id=None):
-        """
-            Args:
-                @params out_table, str: Name of the output table
-        """
-        if not out_table and not model_repository_table:
-            plpy.error("Error: Either the output table/view, " \
-                "or the model repository table param must be specified.")
-        self.out_table = out_table
-        self.out_table_summary = get_summary_tablename(self.out_table)
-        self.model_repo_table = model_repository_table
-        self.model_repo_table_summary = get_summary_tablename(
-            self.model_repo_table)
-        self.model_id = model_id
-        # Used during training. Set to True if model repo table has to be created
-        self.repo_tables_exist = True
-        # Used during predict. Set to True, if model repo table and a model id
-        # are provided, and a view has to be created and used as model table,
-        # False otherwise.
-        self.create_view_from_repo_table = False
 
-    def _is_valid_versioned_table(self, cols, expected_cols):
+    @staticmethod
+    def _is_valid_versioned_table(cols, expected_cols):
         return len(cols)==len(expected_cols) and \
                all(colname in expected_cols for colname in cols)
 
-    def _validate_model_repo_tables(self):
+    @staticmethod
+    def is_valid_repo_table(model_repo_table):
         """
             Validate model repo and summary tables. If they exist, they are
             valid only if they contain some expected columns. If they don't
             exist, set a flag to indicate the same so that it can be created.
         """
-        model_repo_table_exists = table_exists(self.model_repo_table)
+        model_repo_table_summary = get_summary_tablename(model_repo_table)
+        model_repo_table_exists = table_exists(model_repo_table)
         model_repo_table_summary_exists = table_exists(
-            self.model_repo_table_summary)
+            model_repo_table_summary)
+        exists = model_repo_table_exists and model_repo_table_summary_exists
+
         if model_repo_table_exists and model_repo_table_summary_exists:
             # Check if the two tables have specific columns.
             # First check for model_repo_table cols and types.
-            model_repo_table_cols = get_cols(self.model_repo_table)
-            _assert(self._is_valid_versioned_table(
+            model_repo_table_cols = get_cols(model_repo_table)
+            _assert(VersionedModelTableValidator._is_valid_versioned_table(
                 model_repo_table_cols, ModelRepoCols.MODEL_TABLE_COLS),
                 "Unexpected columns found in model repo table {0}: {1}.".
-                    format(self.model_repo_table, model_repo_table_cols))
+                    format(model_repo_table, model_repo_table_cols))
 
-            # Now check for self.model_repo_table_summary cols and types.
-            model_repo_table_summary_cols = get_cols(self.model_repo_table_summary)
-            _assert(self._is_valid_versioned_table(
+            # Now check for model_repo_table_summary cols and types.
+            model_repo_table_summary_cols = get_cols(model_repo_table_summary)
+            _assert(VersionedModelTableValidator._is_valid_versioned_table(
                 model_repo_table_summary_cols, ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS_TYPES),
-                "Unexpected columns found in model repo summary table {0}.".
-                    format(self.model_repo_table_summary))
+                "Unexpected columns found in model repo summary table {0}: {1}.".
+                    format(model_repo_table_summary, model_repo_table_summary_cols))
         elif model_repo_table_exists or model_repo_table_summary_exists:
             # If only one of the two tables exists, it is invalid.
             plpy.error("Table {0} does not exist.".format(
-                self.model_repo_table_summary if model_repo_table_exists
-                    else self.model_repo_table))
-        else:
-            self.repo_tables_exist = False
+                model_repo_table_summary if model_repo_table_exists
+                    else model_repo_table))
 
-    def validate_model_tables_for_predict(self):
+        return exists
+
+    @staticmethod
+    def validate_model_tables_for_train(model_view, model_repo_table):
+        """
+        Validate out_table and model_repository_table parameters for training:
+        Check whether model_table and model_table_summary are valid versioned
+        model tables.  Returns if valid or non-existent, otherwise throws
+        exception. If model_repository_table is not specified, then check
+        for the validity of the out_table.
+        """
+        # if self.model_repo_table:
+        model_view_summary = get_summary_tablename(model_view)
+        model_repo_table_summary = get_summary_tablename(model_repo_table)
+        exists = VersionedModelTableValidator.is_valid_repo_table(model_repo_table)
+        # Validate self.out_table. This could either be intended to be a
+        # table, or a view. If model_repository_table is specified,
+        # self.out_table is assumed to be a view. So no table by that name
+        # should already exist (view can exist, we drop and re-create them.)
+        _assert(not table_exists(model_view,
+                                 only_first_schema=True,
+                                 relkind=TABLES_ONLY),
+            "Error: A table named {0} already exists. The model is "\
+            "expected to be versioned in {1}, while creating a view "\
+            "named {0} pointing to the model.".format(
+                model_view, model_repo_table))
+        _assert(not table_exists(model_view_summary,
+                                 only_first_schema=True,
+                                 relkind=TABLES_ONLY),
+            "Error: A table named {0} already exists. The summary of "\
+            "the model is expected to be versioned in {1}, while creating "\
+            "a view named {0} pointing to the model summary.".format(
+                model_view, model_repo_table_summary))
+
+        return exists
+
+    @staticmethod
+    def validate_model_tables_for_predict(model_repo_table, model_id):
         """
             This validate function must be called during predict, i.e., when
             we want to read from an existing model, or repository table. So
             validation here is based on the requirements for the same.
         """
         # For reader, we will assume that only out_table is set.
-        if self.model_id:
+        create_view_from_repo_table = False
+        model_repo_table_summary = get_summary_tablename(model_repo_table)
+        model_table = model_repo_table
+        model_table_summary = model_repo_table_summary
+
+        if model_id:
             # The output table specified during predict could be one of three
             # values:
             # 1) a view pointing to a model_id in repo table
@@ -121,82 +145,35 @@ class VersionedModelTableValidator(object):
             # otherwise. So, if model_id is specified, we assume that the
             # out_table passed by the calling function is actually the repo
             # table. So, set the variables accordingly and validate.
-            self.model_repo_table = self.out_table
-            self.model_repo_table_summary = self.out_table_summary
 
             # Assert that model_repo_table is NOT a view. It should only be a
             # regular table.
-            is_model_repo_a_view = table_exists(self.model_repo_table,
+            is_model_repo_a_view = table_exists(model_repo_table,
                                                 relkind=VIEWS_ONLY)
             is_model_repo_summary_a_view = table_exists(
-                self.model_repo_table_summary, relkind=VIEWS_ONLY)
+                model_repo_table_summary, relkind=VIEWS_ONLY)
             if is_model_repo_a_view or is_model_repo_summary_a_view:
                 plpy.error("Model Versioning Error: The repo and summary tables " \
                            "are expected to be tables and not views.")
 
-            self._validate_model_repo_tables()
-            if not self.repo_tables_exist:
+            exists = VersionedModelTableValidator.is_valid_repo_table(model_table)
+            if not exists:
                 plpy.error("Model Versioning Error: The repository tables "\
                     "{0} and/or {1} do not exist.".format(
-                        self.model_repo_table, self.model_repo_table_summary))
-            self.create_view_from_repo_table = True
+                        model_repo_table, model_repo_table_summary))
+            create_view_from_repo_table = True
         else:
             # If model_id is not specified, out_table could either be a regular
             # table, or a view pointing to some model_id in some repo table.
             # Assert that tables/views named out_table and out_table_summary
             # exist.
-            _assert(table_exists(self.out_table),
-                "Given model table/view {} does not exist.".format(self.out_table))
-            _assert(table_exists(self.out_table_summary),
+            _assert(table_exists(model_table),
+                "Given model table/view {} does not exist.".format(model_table))
+            _assert(table_exists(model_table_summary),
                 "Given model summary table/view {} does not exist.".format(
-                    self.out_table_summary))
+                    model_table_summary))
 
-    def validate_model_tables_for_view_creator(self):
-        if self.model_id:
-            # Validate the repository tables.
-            self._validate_model_repo_tables()
-        else:
-            plpy.error("Please provide a model_id to create a view for.")
-
-    def validate_model_tables_for_train(self):
-        """
-        Validate out_table and model_repository_table parameters for training:
-        Check whether model_table and model_table_summary are valid versioned
-        model tables.  Returns if valid or non-existent, otherwise throws
-        exception. If model_repository_table is not specified, then check
-        for the validity of the out_table.
-        """
-        if self.model_repo_table:
-            self._validate_model_repo_tables()
-            # Validate self.out_table. This could either be intended to be a
-            # table, or a view. If model_repository_table is specified,
-            # self.out_table is assumed to be a view. So no table by that name
-            # should already exist (view can exist, we drop and re-create them.)
-            _assert(not table_exists(self.out_table,
-                                     only_first_schema=True,
-                                     relkind=TABLES_ONLY),
-                "Error: A table named {0} already exists. The model is "\
-                "expected to be versioned in {1}, while creating a view "\
-                "named {0} pointing to the model.".format(
-                    self.out_table, self.model_repo_table))
-            _assert(not table_exists(self.out_table_summary,
-                                     only_first_schema=True,
-                                     relkind=TABLES_ONLY),
-                "Error: A table named {0} already exists. The summary of "\
-                "the model is expected to be versioned in {1}, while creating "\
-                "a view named {0} pointing to the model summary.".format(
-                    self.out_table, self.model_repo_table_summary))
-        else:
-            # If self.model_repo_table does not exist, then neither a view nor
-            # a table named self.out_table/self.out_table_summary should exist.
-            _assert(not table_exists(
-                    self.out_table, only_first_schema=True),
-                "Error: Output table {0} already exists.".format(
-                    self.out_table))
-            _assert(not table_exists(
-                    self.out_table_summary, only_first_schema=True),
-                "Error: Output summary table {0} already exists.".format(
-                    self.out_table_summary))
+        return create_view_from_repo_table
 
 class VersionedModelViewCreator(object):
     """
@@ -230,11 +207,15 @@ class VersionedModelViewCreator(object):
         self.repo_view_name = view_name
         self.summary_view_name = get_summary_tablename(self.repo_view_name)
         self.model_repo_summary_table = get_summary_tablename(self.model_repo_table)
-        model_validator = VersionedModelTableValidator(
-            model_repository_table=self.model_repo_table,
-            model_id=self.model_id)
         if validate_tables:
-            model_validator.validate_model_tables_for_view_creator()
+            self.validate_model_tables_for_view_creator()
+
+    def validate_model_tables_for_view_creator(self):
+        if self.model_id:
+            # Validate the repository tables.
+            VersionedModelTableValidator.is_valid_repo_table(self.model_repo_table)
+        else:
+            plpy.error("Please provide a model_id to create a view for.")
 
     def _get_view_creation_header(self, input_table_name, row_name, view_name):
         """
@@ -651,10 +632,8 @@ class VersionedModelWriter(object):
                 "must be specified to write the model to a versioned table.")
         self.MODEL_VER_DELIMITER = '$model_ver$'
         # Validate repo table
-        validator = VersionedModelTableValidator(
-            self.model_view, self.model_repo_table)
-        validator.validate_model_tables_for_train()
-        if not validator.repo_tables_exist:
+        exists = VersionedModelTableValidator.validate_model_tables_for_train(self.model_view, self.model_repo_table)
+        if not exists:
             self._create_model_repo_tables()
 
     def _create_model_repo_tables(self):
@@ -858,9 +837,7 @@ class VersionedModelReader(object):
         self.drop_temp_model_views = False
         self.model_to_use = self.model_table
         self.model_summary_to_use = self.model_table_summary
-        self.validator = VersionedModelTableValidator(
-            self.model_table, model_id=self.model_id)
-        self.validator.validate_model_tables_for_predict()
+        self.create_view_from_repo_table = VersionedModelTableValidator.validate_model_tables_for_predict(self.model_table, self.model_id)
 
     def get_model_tables_for_prediction(self):
         """
@@ -869,7 +846,7 @@ class VersionedModelReader(object):
             model_id. This function is typically called from predict
             functions of modules that support model versioning.
         """
-        if self.validator.create_view_from_repo_table:
+        if self.create_view_from_repo_table:
             self.model_to_use = unique_string(desp='model_view')
             self.model_summary_to_use = get_summary_tablename(self.model_to_use)
             view_creator = VersionedModelViewCreator(self.schema_madlib,

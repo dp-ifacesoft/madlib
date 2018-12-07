@@ -42,10 +42,32 @@ class VersionedModelTableValidatorTestCase(unittest.TestCase):
 
         self.module_patcher = patch.dict('sys.modules', patches)
         self.module_patcher.start()
-        from model_versioning import VersionedModelTableValidator
+
+        self.model_view = 'model_view'
+        self.model_repo_table = 'repo_table'
+        self.model_id = 1
+        import internal.model_versioning
+        self.module = internal.model_versioning
 
     def tearDown(self):
         self.module_patcher.stop()
+
+    def test_init(self):
+        with self.assertRaises(plpy.PLPYException):
+            validator_obj = self.module.VersionedModelTableValidator(None)
+        with self.assertRaises(plpy.PLPYException):
+            validator_obj = self.module.VersionedModelTableValidator(self.model_repo_table, None)
+        with self.assertRaises(plpy.PLPYException):
+            validator_obj = self.module.VersionedModelTableValidator(None,
+                self.model_id)
+        validator_obj = self.module.VersionedModelTableValidator(self.model_repo_table, self.model_id)
+        validator_obj = self.module.VersionedModelTableValidator(self.model_view)
+
+    # def test_validate_model_tables_for_train(self):
+
+
+    # def test_validate_model_repo_tables_exits(self):
+    #     pass
 
 class AnyStringWith(str):
     def __eq__(self, other):

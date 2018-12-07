@@ -66,10 +66,16 @@ def _tree_validate_args(
             "Decision tree error: Invalid data table.")
     _assert(table_exists(training_table_name),
             "Decision tree error: Data table is missing.")
+    plpy.info('repo is {}'.format(model_repository_table))
+    if not model_repository_table:
+        _assert(not table_exists(output_table_name, only_first_schema=True),
+            "Decision tree error: Output table already exists.")
+        _assert(not table_exists(add_postfix(output_table_name, "_summary"), only_first_schema=True),
+            "Decision tree error: Output summary table already exists.")
+    else:
+        VersionedModelTableValidator.validate_model_tables_for_train(
+            output_table_name, model_repository_table)
 
-    versioned_table_validator = VersionedModelTableValidator(
-        output_table_name, model_repository_table)
-    versioned_table_validator.validate_model_tables_for_train()
     if n_folds and model_repository_table:
         plpy.error("DT error: Model versioning is currently not supported " \
             "for cross validation.")
@@ -977,7 +983,6 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         schema_madlib, output_table_name, model_repository_table)
     model_writer.store_model(model_data, model_attributes,
                              summary_cols, dt_summary_json_dict)
-
 # ------------------------------------------------------------
 
 
