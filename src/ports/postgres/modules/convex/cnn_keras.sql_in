@@ -295,10 +295,6 @@ RETURNS VOID AS $$
         model_string += 'splitter'
         model_shapes.append(a.shape)
 
-    print("Garbage collection in keras_run: {}".format(gc.collect()))
-    K.clear_session()
-    sess = K.get_session()
-    sess.close()
     plpy.info("Model state size: {}MB".format(len(model_string)/1024/1024))
     start_time = time.time()
     for i in range(N_ITERATIONS):
