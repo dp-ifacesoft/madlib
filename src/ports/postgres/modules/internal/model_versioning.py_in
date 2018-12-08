@@ -97,7 +97,6 @@ class VersionedModelTableValidator(object):
         exception. If model_repository_table is not specified, then check
         for the validity of the out_table.
         """
-        # if self.model_repo_table:
         model_view_summary = get_summary_tablename(model_view)
         model_repo_table_summary = get_summary_tablename(model_repo_table)
         exists = VersionedModelTableValidator.is_valid_repo_table(model_repo_table)
@@ -152,6 +151,7 @@ class VersionedModelTableValidator(object):
                                                 relkind=VIEWS_ONLY)
             is_model_repo_summary_a_view = table_exists(
                 model_repo_table_summary, relkind=VIEWS_ONLY)
+
             if is_model_repo_a_view or is_model_repo_summary_a_view:
                 plpy.error("Model Versioning Error: The repo and summary tables " \
                            "are expected to be tables and not views.")

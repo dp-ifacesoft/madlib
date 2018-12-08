@@ -48,30 +48,92 @@ class VersionedModelTableValidatorTestCase(unittest.TestCase):
         self.model_id = 1
         import internal.model_versioning
         self.module = internal.model_versioning
+        self.subject = self.module.VersionedModelTableValidator
+        self.subject.is_valid_repo_table = Mock()
 
     def tearDown(self):
         self.module_patcher.stop()
 
-    def test_init(self):
+    def test_validate_model_tables_for_train_returns_value(self):
+        self.module.table_exists = Mock(return_value=False)
+
+        self.subject.is_valid_repo_table = Mock(return_value=False)
+        self.assertFalse(self.subject.validate_model_tables_for_train(self.model_view, self.model_repo_table))
+
+        self.subject.is_valid_repo_table = Mock(return_value=True)
+        self.assertTrue(self.subject.validate_model_tables_for_train(self.model_view, self.model_repo_table))
+
+    def test_validate_model_tables_for_train_throws_error(self):
+        self.module.table_exists = Mock(side_effect=[False,True])
         with self.assertRaises(plpy.PLPYException):
-            validator_obj = self.module.VersionedModelTableValidator(None)
+            self.subject.validate_model_tables_for_train(self.model_view, self.model_repo_table)
+        self.assertEqual(2, self.module.table_exists.call_count)
+
+        self.module.table_exists = Mock(side_effect=[True,False])
         with self.assertRaises(plpy.PLPYException):
-            validator_obj = self.module.VersionedModelTableValidator(self.model_repo_table, None)
+            self.subject.validate_model_tables_for_train(self.model_view, self.model_repo_table)
+        self.assertEqual(1, self.module.table_exists.call_count)
+
+        self.module.table_exists = Mock(side_effect=[True,True])
         with self.assertRaises(plpy.PLPYException):
-            validator_obj = self.module.VersionedModelTableValidator(None,
-                self.model_id)
-        validator_obj = self.module.VersionedModelTableValidator(self.model_repo_table, self.model_id)
-        validator_obj = self.module.VersionedModelTableValidator(self.model_view)
+            self.subject.validate_model_tables_for_train(self.model_view, self.model_repo_table)
+        self.assertEqual(1, self.module.table_exists.call_count)
 
-    # def test_validate_model_tables_for_train(self):
+    def test_validate_model_tables_for_predict_none_model_id(self):
+        self.module.table_exists = Mock(side_effect=[True,False])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_predict(self.model_repo_table, None)
+        self.assertEqual(2, self.module.table_exists.call_count)
 
+        self.module.table_exists = Mock(side_effect=[False,True])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_predict(self.model_repo_table, None)
+        self.assertEqual(1, self.module.table_exists.call_count)
 
-    # def test_validate_model_repo_tables_exits(self):
-    #     pass
+        self.module.table_exists = Mock(side_effect=[False,False])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_predict(self.model_repo_table, None)
+        self.assertEqual(1, self.module.table_exists.call_count)
 
-class AnyStringWith(str):
-    def __eq__(self, other):
-        return self in other
+        self.module.table_exists = Mock(side_effect=[True,True])
+        self.assertFalse(self.subject.validate_model_tables_for_predict(
+            self.model_repo_table, None))
+        self.assertEqual(2, self.module.table_exists.call_count)
+
+    def test_validate_model_tables_for_predict_with_model_id_throws_error(self):
+        #TODO:add a negative dev check to guarantee when model_id is specified,
+        # model_repo_talbe is not a view
+        self.module.table_exists = Mock(side_effect=[False,True])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_predict(
+                self.model_repo_table, self.model_id)
+        self.assertEqual(2, self.module.table_exists.call_count)
+
+        self.module.table_exists = Mock(side_effect=[True,False])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_predict(
+                self.model_repo_table, self.model_id)
+        self.assertEqual(2, self.module.table_exists.call_count)
+
+        self.module.table_exists = Mock(side_effect=[True,True])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_predict(
+                self.model_repo_table, self.model_id)
+        self.assertEqual(2, self.module.table_exists.call_count)
+
+        self.module.table_exists = Mock(side_effect=[False,False])
+        self.subject.is_valid_repo_table = Mock(return_value=False)
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_predict(
+                self.model_repo_table, self.model_id)
+
+    def test_validate_model_tables_for_predict_with_model_id_returns_value(self):
+        #TODO:add a negative dev check to guarantee when model_id is specified,
+        # model_repo_talbe is not a view
+        self.module.table_exists = Mock(side_effect=[False,False])
+        self.subject.is_valid_repo_table = Mock(return_value=True)
+        self.assertTrue(self.subject.validate_model_tables_for_predict(
+                self.model_repo_table, self.model_id))
 
 
 if __name__ == '__main__':
