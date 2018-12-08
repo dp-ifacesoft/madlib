@@ -548,7 +548,7 @@ INSERT INTO mt_cars VALUES
 (32,21.4,4,121,109,4.11,2.78,18.6,1,1,4,2);
 
 DROP TABLE IF EXISTS train_output, train_output_summary, train_output_cv;
-SELECT madlib.tree_train('mt_cars',         -- source table
+SELECT tree_train('mt_cars',         -- source table
                          'train_output',    -- output model table
                          'id',              -- id column
                          'mpg',             -- dependent variable
@@ -566,11 +566,11 @@ SELECT madlib.tree_train('mt_cars',         -- source table
                          );
 
 DROP TABLE IF EXISTS imp_output;
-SELECT madlib.get_var_importance('train_output','imp_output');
+SELECT get_var_importance('train_output','imp_output');
 SELECT * FROM imp_output ORDER BY impurity_var_importance DESC;
 
 DROP TABLE IF EXISTS prediction_results;
-SELECT madlib.tree_predict('train_output',
+SELECT tree_predict('train_output',
                            'mt_cars',
                            'prediction_results',
                            'response');
@@ -578,9 +578,9 @@ SELECT s.id, mpg, estimated_mpg, mpg-estimated_mpg as delta
 FROM prediction_results p,
 mt_cars s WHERE s.id = p.id ORDER BY id;
 
-SELECT madlib.tree_display('train_output', FALSE);
+SELECT tree_display('train_output', FALSE);
 
-SELECT madlib.tree_surr_display('train_output');
+SELECT tree_surr_display('train_output');
 
 
 DROP TABLE IF EXISTS train_output, train_output_summary;
@@ -626,7 +626,7 @@ SELECT assert
     'Summary Validation failed. Actual:' || summary
 ) from (select * from train_output_summary) summary;
 DROP TABLE IF EXISTS prediction_results;
-SELECT madlib.tree_predict('train_output', 'dt_golf', 'prediction_results', 'prob');
+SELECT tree_predict('train_output', 'dt_golf', 'prediction_results', 'prob');
 
 -- Test for features to exclude
 DROP TABLE IF EXISTS train_output, train_output_summary;
@@ -657,7 +657,7 @@ train_output_summary) summary;
 ------------------------------------------------------------------
 -- Call tree_train multiple times without dropping the output table.
 -- Assert that it creates the view and the repo table along with the summary table
-SELECT madlib.tree_train('mt_cars',         -- source table
+SELECT tree_train('mt_cars',         -- source table
                          'train_view',    -- output model table
                          'id',              -- id column
                          'mpg',             -- dependent variable
@@ -754,7 +754,7 @@ SELECT assert(max_model_id = 2 , 'The highest model_id should have been 2.') FRO
 
 -- Test prediction with probability
 DROP TABLE IF EXISTS train_output, train_output_summary;
-SELECT madlib.tree_train('dt_golf',
+SELECT tree_train('dt_golf',
 'train_view',
 'id',
 'class',
@@ -766,9 +766,9 @@ NULL,
 5, 3, 1, 10,NULL, NULL,NULL,'train_repo','name 3','desc 3');
 
 DROP TABLE IF EXISTS prediction_results;
-SELECT madlib.tree_predict('train_view', 'dt_golf', 'prediction_results', 'prob');
+SELECT tree_predict('train_view', 'dt_golf', 'prediction_results', 'prob');
 DROP TABLE IF EXISTS prediction_results;
-SELECT madlib.tree_predict('train_repo', 'dt_golf', 'prediction_results', 'prob', 3);
+SELECT tree_predict('train_repo', 'dt_golf', 'prediction_results', 'prob', 3);
 
 -- Assert name and desc are null
 SELECT tree_train('dt_golf',         -- source table
