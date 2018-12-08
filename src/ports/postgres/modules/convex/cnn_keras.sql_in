@@ -72,68 +72,8 @@ RETURNS VOID AS $$
 
         return weightsList
 
-    def create_model_architecture(n_classes):
+    def create_model_architecture(n_classes,config='A'):
         model = Sequential()
-
-#        model.add(ZeroPadding2D((1, 1), input_shape=(224,224,3)))
-#        model.add(Conv2D(64, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(64, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-#
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(128, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(128, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-#
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(256, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(256, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(256, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-#
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(512, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(512, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(512, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-#
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(512, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(512, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(ZeroPadding2D((1, 1)))
-#        model.add(Conv2D(512, (3, 3)))
-#        model.add(Activation('relu'))
-#        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-#
-#        model.add(Flatten())
-#        model.add(Dense(4096))
-#        model.add(Activation('relu'))
-#        model.add(Dropout(0.5))
-#        model.add(Dense(4096))
-#        model.add(Activation('relu'))
-#        model.add(Dropout(0.5))
-#        model.add(Dense(n_classes))
-#        model.add(Activation('softmax'))
-
 
         # Determine proper input shape
         input_shape = (224,224,3)
@@ -150,7 +90,8 @@ RETURNS VOID AS $$
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block1_conv1')(inputs)
 
-        x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
+        if (config != 'A'):
+            x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block1_conv2')(x)
 
@@ -161,7 +102,8 @@ RETURNS VOID AS $$
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block2_conv1')(x)
 
-        x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
+        if (config != 'A'):
+            x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block2_conv2')(x)
 
@@ -176,10 +118,20 @@ RETURNS VOID AS $$
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block3_conv2')(x)
 
-        x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
+        if (config != 'A' and config != 'B'):
+            if config == 'C':
+                ks = 1 
+            else:
+                ks = 3
+                x = Conv2D(filters=256, kernel_size=ks, strides=(1, 1), padding='same',
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block3_conv3')(x)
 
+        if (config == 'E'):
+            x = Conv2D(filters=256, kernel_size=ks, strides=(1, 1), padding='same',
+                kernel_regularizer=l2(0.0002),
+                activation='relu', name='block3_conv3')(x)
+   
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block3_pool", padding='valid')(x)
 
         # Block 4
@@ -191,24 +143,37 @@ RETURNS VOID AS $$
                    kernel_regularizer=l2(0.0002),
                    activation='relu', name='block4_conv2')(x)
 
-        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block4_conv3')(x)
+        if (config != 'A' and config != 'B'):
+            if config == 'C':
+                ks = 1 
+            else:
+                ks = 3
+            x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
+                       kernel_regularizer=l2(0.0002),
+                       activation='relu', name='block4_conv3')(x)
+
+            if config == 'E':
+                x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
+                       kernel_regularizer=l2(0.0002),
+                       activation='relu', name='block4_conv3')(x)
 
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block4_pool", padding='valid')(x)
 
         # Block 5
-        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block5_conv1')(x)
 
-        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block5_conv2')(x)
+        if (config != 'A' and config != 'B'):
+            if config == 'C':
+                ks = 1 
+            else:
+                ks = 3
+            x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
+                       kernel_regularizer=l2(0.0002),
+                       activation='relu', name='block4_conv3')(x)
 
-        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block5_conv3')(x)
+            if config == 'E':
+                x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
+                       kernel_regularizer=l2(0.0002),
+                       activation='relu', name='block4_conv3')(x)
 
         x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block5_pool", padding='valid')(x)
 
@@ -226,7 +191,7 @@ RETURNS VOID AS $$
 
 
 ##########
-        sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
+        sgd = SGD(lr=0.001, decay=1e-6, nesterov=True)
         model.summary()
 
         model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
@@ -308,11 +273,10 @@ RETURNS VOID AS $$
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         weightsList = []
         weightsList = deserialize(model_string,model_shapes)
-        eval_model = model_from_json(model_arch)
-        eval_model.set_weights(weightsList)
-        eval_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-            loss='categorical_crossentropy', metrics=['accuracy'])
-        agg_score = eval_model.evaluate(all_x_test, all_y_test, verbose=0)[1]
+        model.set_weights(weightsList)
+#        model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+#            loss='categorical_crossentropy', metrics=['accuracy'])
+        agg_score = model.evaluate(all_x_test, all_y_test, verbose=0)[1]
         plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
         agg_scores.append(agg_score)
 
