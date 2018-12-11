@@ -40,7 +40,6 @@ RETURNS VOID AS $$
     import plpy
     import keras
     import numpy as np
-    import json
     import pandas as pd
     import time
     import os
@@ -191,7 +190,7 @@ RETURNS VOID AS $$
 
 
 ##########
-        sgd = SGD(lr=0.001, decay=1e-6, nesterov=True)
+        sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
         model.summary()
 
         model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
@@ -231,9 +230,10 @@ RETURNS VOID AS $$
     eval_start = time.time()
     plpy.info("Time to prepare test data = {}".format(eval_start - after_select));
 
-    model.evaluate(all_x_test, all_y_test, verbose=1)
+    agg_score = model.evaluate(all_x_test, all_y_test,verbose=0)[1]
     eval_time = time.time()
     plpy.info("Time to evaluate model = {0}".format(eval_time-eval_start))
+    plpy.info("Accuracy before any training = {0}".format(agg_score))
 
     agg_scores = []
     model_arch = model.to_json()
@@ -252,7 +252,7 @@ RETURNS VOID AS $$
 
     update_plan = plpy.prepare(sql, ["bytea"])
     plpy.info("model arch is in place")
-    model_string = ''
+    model_string = "0splitter"
     start_time = time.time()
     model_shapes = []
     for a in model.get_weights():
@@ -273,11 +273,10 @@ RETURNS VOID AS $$
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         weightsList = []
         weightsList = deserialize(model_string,model_shapes)
+        model_string = "0splitter" + model_string
         model.set_weights(weightsList)
-#        model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-#            loss='categorical_crossentropy', metrics=['accuracy'])
         agg_score = model.evaluate(all_x_test, all_y_test, verbose=0)[1]
-        plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i, agg_score))
+        plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i+1, agg_score))
         agg_scores.append(agg_score)
 
     plan = plpy.prepare("""
@@ -319,7 +318,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % segments_per_host)
 
 import numpy as np
 import keras
-import json
 import time
 import gc
 from keras.models import Sequential
@@ -335,15 +333,16 @@ for dev in avail:
     plpy.info("name: {}, type: {}, memory_limit: {}MB".format(dev.name,dev.device_type,dev.memory_limit/1024/1024))
 
 
-def deserialize(state,model_shapes):
+def transition_deserialize(state,model_shapes):
     weightsList = []
     j = 0
-    for a in filter(None,state.split('splitter')):
+    split_state = filter(None,state.split('splitter'))
+    for a in split_state[1:]:
         arr = np.fromstring(a, dtype=np.float32)
         weightsList.append(arr.reshape(model_shapes[j]))
         j+=1
 
-    return weightsList
+    return int(split_state[0]),weightsList
 
 real_start = time.time()
 
@@ -374,7 +373,7 @@ with K.tf.device(device_name):
 
 plpy.info("Transition STARTED")
 start = time.time()
-weightsList = deserialize(serialized_state,model_shapes)
+buffer_count,weightsList = transition_deserialize(serialized_state,model_shapes)
 after_deser = time.time()
 with K.tf.device(device_name):
     keras_model.set_weights(weightsList)
@@ -430,7 +429,7 @@ else:
                verbose=0)
 end = time.time()
 plpy.info("done with fit")
-model_string = ''
+model_string = str(buffer_count+1) + 'splitter'
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
 
@@ -468,29 +467,37 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_merge(
     state2          BYTEA
 ) RETURNS BYTEA AS
 $$
-import json
 import numpy as np
 import time
-import plpy
+#import plpy
 
-plpy.info("Starting merge",0)
-merge_start = time.time()
+#merge_start = time.time()
 
 if not state1 or not state2:
-    plpy.info("Returning from merge early","(only 1 state passed)")
+#    plpy.info("Returning from merge early","(only 1 state passed)")
     return state1 or state2
 
-weights1 = [np.fromstring(a,dtype='float32') for a in filter(None,state1.split('splitter'))]
-weights2 = [np.fromstring(a,dtype='float32') for a in filter(None,state2.split('splitter'))]
+split_state1 = filter(None,state1.split('splitter'))
+split_state2 = filter(None,state2.split('splitter'))
 
-merged_weights = [a+b for a, b in zip(weights1, weights2)]
-model_string = ''
+buffer_count1 = int(state1[0])
+buffer_count2 = int(state2[0])
+
+weights1 = [np.fromstring(a,dtype='float32') for a in split_state1[1:]]
+weights2 = [np.fromstring(a,dtype='float32') for a in split_state2[1:]]
+
+total_buffers = (buffer_count1 + buffer_count2) * 1.0
+merge_weight1 = buffer_count1 / total_buffers
+merge_weight2 = buffer_count2 / total_buffers
+
+merged_weights = [(merge_weight1*a)+(merge_weight2*b) for a, b in zip(weights1, weights2)]
+model_string = str(total_buffers) + 'splitter'
 for a in merged_weights:
     model_string += a.tostring()
     model_string += "splitter"
 
-merge_finish = time.time()
-plpy.info("cnn_keras_merge time = {}".format(merge_finish-merge_start))
+#merge_finish = time.time()
+#plpy.info("cnn_keras_merge time = {}".format(merge_finish-merge_start))
 
 return model_string
 $$
@@ -501,23 +508,14 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_final(
     state BYTEA
 ) RETURNS BYTEA AS
 $$
-import json
-import time
 import numpy as np
-import plpy
 
-plpy.info("Starting final function")
-final_start = time.time()
-
-weights = [np.fromstring(a,dtype='float32') for a in filter(None,state.split('splitter'))]
-normalized_weights=[a/1 for a in weights]
+weights = [np.fromstring(a,dtype='float32') for a in filter(None,state.split('splitter')[1:])]
 model_string = ''
-for a in normalized_weights:
+for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
 
-final_finish = time.time()
-plpy.info("cnn_keras_final time = {}".format(final_finish-final_start))
 return model_string
 $$
 LANGUAGE plpythonu
