@@ -27,6 +27,7 @@ sys.path.append(path.dirname(path.dirname(path.dirname(path.abspath(__file__))))
 import unittest
 from mock import *
 import plpy_mock as plpy
+from internal.model_versioning_helper import *
 
 m4_changequote(`<!', `!>')
 
@@ -49,7 +50,6 @@ class VersionedModelTableValidatorTestCase(unittest.TestCase):
         import internal.model_versioning
         self.module = internal.model_versioning
         self.subject = self.module.VersionedModelTableValidator
-        self.subject.is_valid_repo_table = Mock()
 
     def tearDown(self):
         self.module_patcher.stop()
@@ -64,6 +64,7 @@ class VersionedModelTableValidatorTestCase(unittest.TestCase):
         self.assertTrue(self.subject.validate_model_tables_for_train(self.model_view, self.model_repo_table))
 
     def test_validate_model_tables_for_train_throws_error(self):
+        self.subject.is_valid_repo_table = Mock()
         self.module.table_exists = Mock(side_effect=[False,True])
         with self.assertRaises(plpy.PLPYException):
             self.subject.validate_model_tables_for_train(self.model_view, self.model_repo_table)
@@ -80,6 +81,8 @@ class VersionedModelTableValidatorTestCase(unittest.TestCase):
         self.assertEqual(1, self.module.table_exists.call_count)
 
     def test_validate_model_tables_for_predict_none_model_id(self):
+        self.subject.is_valid_repo_table = Mock()
+
         self.module.table_exists = Mock(side_effect=[True,False])
         with self.assertRaises(plpy.PLPYException):
             self.subject.validate_model_tables_for_predict(self.model_repo_table, None)
@@ -103,6 +106,8 @@ class VersionedModelTableValidatorTestCase(unittest.TestCase):
     def test_validate_model_tables_for_predict_with_model_id_throws_error(self):
         #TODO:add a negative dev check to guarantee when model_id is specified,
         # model_repo_talbe is not a view
+        self.subject.is_valid_repo_table = Mock()
+
         self.module.table_exists = Mock(side_effect=[False,True])
         with self.assertRaises(plpy.PLPYException):
             self.subject.validate_model_tables_for_predict(
@@ -134,6 +139,52 @@ class VersionedModelTableValidatorTestCase(unittest.TestCase):
         self.subject.is_valid_repo_table = Mock(return_value=True)
         self.assertTrue(self.subject.validate_model_tables_for_predict(
                 self.model_repo_table, self.model_id))
+
+    def test_is_valid_repo_table_tables_dont_exist_return_False(self):
+        self.module.table_exists = Mock(side_effect=[False,False])
+        self.assertFalse(self.subject.is_valid_repo_table(self.model_repo_table))
+
+    def test_is_valid_repo_table_one_table_exists_throw_error(self):
+        self.module.table_exists = Mock(side_effect=[True,False])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.is_valid_repo_table(self.model_repo_table)
+
+        self.module.table_exists = Mock(side_effect=[False,True])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.is_valid_repo_table(self.model_repo_table)
+
+    def test_is_valid_repo_table_both_tables_exist_in_wrong_format_throw_error(
+            self):
+        self.module.table_exists = Mock(side_effect=[True,True])
+        self.module.get_cols = Mock(side_effect=[['wrong','cols'],
+                                                 ModelRepoSummaryCols.
+                                                MODEL_TABLE_SUMMARY_COLS_TYPES])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.is_valid_repo_table(self.model_repo_table)
+
+        self.module.table_exists = Mock(side_effect=[True,True])
+        self.module.get_cols = Mock(side_effect=[
+            ModelRepoCols.MODEL_TABLE_COLS, ['wrong','cols']])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.is_valid_repo_table(self.model_repo_table)
+
+        self.module.table_exists = Mock(side_effect=[True,True])
+        self.module.get_cols = Mock(side_effect=[
+            ['wrong','cols1'], ['wrong','cols2']])
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.is_valid_repo_table(self.model_repo_table)
+
+    def test_is_valid_repo_table_both_tables_exist_return_True(self):
+        self.module.table_exists = Mock(side_effect=[True,True])
+        self.module.get_cols = Mock(side_effect=[
+            ModelRepoCols.MODEL_TABLE_COLS, ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS_TYPES])
+        self.assertTrue(self.subject.is_valid_repo_table(self.model_repo_table))
+
+    def test_validate_model_tables_for_view_creator_null_model_id_throws_error(
+            self):
+        with self.assertRaises(plpy.PLPYException):
+            self.subject.validate_model_tables_for_view_creator(
+                self.model_repo_table, None)
 
 
 if __name__ == '__main__':

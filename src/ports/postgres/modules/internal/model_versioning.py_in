@@ -53,11 +53,12 @@ class VersionedModelTableValidator(object):
                all(colname in expected_cols for colname in cols)
 
     @staticmethod
+    #TODO rename this
     def is_valid_repo_table(model_repo_table):
         """
             Validate model repo and summary tables. If they exist, they are
             valid only if they contain some expected columns. If they don't
-            exist, set a flag to indicate the same so that it can be created.
+            exist, return False else True.
         """
         model_repo_table_summary = get_summary_tablename(model_repo_table)
         model_repo_table_exists = table_exists(model_repo_table)
@@ -175,6 +176,15 @@ class VersionedModelTableValidator(object):
 
         return create_view_from_repo_table
 
+    @staticmethod
+    def validate_model_tables_for_view_creator(model_repo_table, model_id):
+        if model_id:
+            # Validate the repository tables.
+            VersionedModelTableValidator.is_valid_repo_table(model_repo_table)
+        else:
+            plpy.error("Please provide a model_id to create a view for.")
+
+
 class VersionedModelViewCreator(object):
     """
         Class to create a view, given a model_id and a model repo table.
@@ -208,14 +218,9 @@ class VersionedModelViewCreator(object):
         self.summary_view_name = get_summary_tablename(self.repo_view_name)
         self.model_repo_summary_table = get_summary_tablename(self.model_repo_table)
         if validate_tables:
-            self.validate_model_tables_for_view_creator()
-
-    def validate_model_tables_for_view_creator(self):
-        if self.model_id:
-            # Validate the repository tables.
-            VersionedModelTableValidator.is_valid_repo_table(self.model_repo_table)
-        else:
-            plpy.error("Please provide a model_id to create a view for.")
+            VersionedModelTableValidator\
+                .validate_model_tables_for_view_creator(model_repo_table,
+                                                        model_id)
 
     def _get_view_creation_header(self, input_table_name, row_name, view_name):
         """
