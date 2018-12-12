@@ -52,11 +52,13 @@ class ModelRepoSummaryCols():
     GROUPING_COLNAME = 'grouping_col'
     NAME_COLNAME = 'name'
     DESC_COLNAME = 'description'
+    MODEL_SIZE_COLNAME = 'model_size'
     MAD_VER_COLNAME = 'madlib_version'
     SUMMARY_COLNAME = 'summary'
     MODEL_DATA_TYPE_COLNAME = 'model_data_type'
     INTERNAL_ID_COLNAME = '__madlib_internal_id__'
 
+    #TODO rename
     MODEL_TABLE_SUMMARY_COLS_TYPES = OrderedDict([
         (MODEL_ID_COLNAME, 'serial'),
         (MODEL_TYPE_COLNAME, 'text'),
@@ -70,6 +72,7 @@ class ModelRepoSummaryCols():
         (GROUPING_COLNAME, 'text'),
         (NAME_COLNAME, 'text'),
         (DESC_COLNAME, 'text'),
+        (MODEL_SIZE_COLNAME, 'int'),
         (MAD_VER_COLNAME, 'text'),
         (SUMMARY_COLNAME, 'JSON'),
         (MODEL_DATA_TYPE_COLNAME, 'text'),
@@ -88,6 +91,7 @@ class ModelRepoSummaryCols():
         GROUPING_COLNAME,
         NAME_COLNAME,
         DESC_COLNAME,
+        MODEL_SIZE_COLNAME,
         MAD_VER_COLNAME]
 
     SUMMARY_REPO_COLS_POPULATED_BY_MODULES = [
@@ -101,11 +105,3 @@ class ModelRepoSummaryCols():
         NAME_COLNAME,
         DESC_COLNAME,
         MODEL_DATA_TYPE_COLNAME]
-
-    SUMMARY_REPO_COLS_POPULATED_BY_VERSIONING = [
-        INTERNAL_ID_COLNAME,
-        MODEL_ID_COLNAME,
-        MAD_VER_COLNAME,
-        MODEL_TABLE_COLNAME,
-        MODEL_REPO_COLNAME,
-        SUMMARY_COLNAME]

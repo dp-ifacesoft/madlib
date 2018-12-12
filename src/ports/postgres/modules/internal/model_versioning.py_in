@@ -20,6 +20,7 @@
 import json
 import plpy
 import types
+import sys
 
 from internal.model_versioning_helper import *
 from utilities.utilities import _assert
@@ -95,6 +96,7 @@ class VersionedModelTableValidator(object):
                     format(model_repo_table_summary, model_repo_table_summary_cols))
         elif model_repo_table_exists or model_repo_table_summary_exists:
             # If only one of the two tables exists, it is invalid.
+            #TODO error_message
             plpy.error("Table {0} does not exist.".format(
                 model_repo_table_summary if model_repo_table_exists
                     else model_repo_table))
@@ -729,7 +731,7 @@ class VersionedModelWriter(object):
         # repo table is NOT serial.
 
         model_id = self._store_model_table_summary(
-            repo_summary_cols_dict, model_summary_json_dict)
+            model_data, repo_summary_cols_dict, model_summary_json_dict)
         self._store_model_table(
             model_id, model_data, model_attributes_json_dict)
 
@@ -740,7 +742,7 @@ class VersionedModelWriter(object):
                                                  validate_tables=False)
         view_creator.create_view()
 
-    def _store_model_table_summary(self, repo_summary_cols_dict,
+    def _store_model_table_summary(self, model_data, repo_summary_cols_dict,
                                    model_summary_json):
         # Get names of keys we want to use/update in repo_summary_cols_dict.
         # These keys are essentially column names in summary table repo.
@@ -759,6 +761,8 @@ class VersionedModelWriter(object):
         repo_summary_cols_dict[mad_ver_colname] = madlib_version(
             self.schema_madlib)
         repo_summary_cols_dict[internal_id_colname] = unique_string(prefix_has_temp=False)
+        repo_summary_cols_dict[ModelRepoSummaryCols.MODEL_SIZE_COLNAME] = \
+            sys.getsizeof(model_data)
         # Do not quote list type columns.
         quote_dict_values(repo_summary_cols_dict,
                           [model_id_colname, ind_var_colname],
@@ -784,6 +788,7 @@ class VersionedModelWriter(object):
                     {grouping_col},
                     {name},
                     {description},
+                    {model_size},
                     {madlib_version},
                     {summary},
                     {model_data_type},

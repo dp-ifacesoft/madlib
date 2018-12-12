@@ -710,6 +710,7 @@ SELECT assert
     grouping_col                is NULL AND
     name                        = 'name 2' AND
     description                 = 'desc 2' AND
+    model_size                  > 0 AND
     madlib_version              is NOT NULL AND
     is_classification           = 't' AND
     id_col_name                 = 'id' AND
