@@ -15,6 +15,7 @@ from math import sqrt
 from operator import itemgetter
 from itertools import groupby
 from collections import Iterable
+from collections import OrderedDict
 
 from internal.db_utils import quote_literal
 from internal.model_versioning_helper import ModelRepoSummaryCols
@@ -879,10 +880,6 @@ def _create_result_table(schema_madlib, tree_state,
 
 # ------------------------------------------------------------
 
-def _filter_locals_dict(fields, **kwargs):
-    # TODO: check with rest of AA, if we want to change this
-    return {x : kwargs[x] for x in fields}
-
 def _create_versioned_output_tables(schema_madlib, training_table_name,
                                     output_table_name, tree_states, bins,
                                     split_criterion, id_col_name,
@@ -948,16 +945,25 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
 
     # List of keys in JSON summary column. NOTE that these names must be the
     # same as the corresponding variable names.
-    dt_summary_json_fields = [
-        'is_classification', 'id_col_name',
-        'cat_features', 'con_features', 'num_failed_groups',
-        'features_to_include', 'features_to_exclude',
-        'total_rows_processed', 'total_rows_skipped',
-        'dependent_var_levels', 'dependent_var_type',
-        'independent_var_types', 'input_cp', 'n_folds',
-        'null_proxy', 'num_all_groups', 'method']
-    dt_summary_json_dict = _filter_locals_dict(
-        dt_summary_json_fields, **locals())
+    dt_summary_json_dict = OrderedDict([
+        ('is_classification', is_classification),
+        ('id_col_name', id_col_name),
+        ('cat_features', cat_features),
+        ('con_features', con_features),
+        ('num_failed_groups', num_failed_groups),
+        ('features_to_include', features_to_include),
+        ('features_to_exclude', features_to_exclude),
+        ('total_rows_processed', total_rows_processed),
+        ('total_rows_skipped', total_rows_skipped),
+        ('dependent_var_levels', dependent_var_levels),
+        ('dependent_var_type', dependent_var_type),
+        ('independent_var_types', independent_var_types),
+        ('input_cp', input_cp),
+        ('n_folds', n_folds),
+        ('null_proxy', null_proxy),
+        ('num_all_groups', num_all_groups),
+        ('method', method)
+    ])
     # Update values of non-JSON columns in summary repo table.
     summary_cols = {
         ModelRepoSummaryCols.MODEL_TYPE_COLNAME: model_type,
@@ -972,12 +978,13 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         ModelRepoSummaryCols.MODEL_DATA_TYPE_COLNAME: model_data_type}
 
     model_data = tree_state['tree_state']
-    model_attributes = dict(
-        tree_depth=depth,
-        pruning_cp=tree_state['cp'],
-        cat_levels_in_text=cat_origin,
-        cat_n_levels=cat_n,
-        impurity_var_importance=tree_state['impurity_var_importance'])
+    model_attributes = OrderedDict([
+        ('cat_levels_in_text', cat_origin),
+        ('cat_n_levels', cat_n),
+        ('impurity_var_importance', tree_state['impurity_var_importance']),
+        ('tree_depth', depth),
+        ('pruning_cp', tree_state['cp'])
+         ])
 
     model_writer = VersionedModelWriter(
         schema_madlib, output_table_name, model_repository_table)
