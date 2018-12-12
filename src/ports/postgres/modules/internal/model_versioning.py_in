@@ -52,6 +52,18 @@ class VersionedModelTableValidator(object):
         return len(cols)==len(expected_cols) and \
                all(colname in expected_cols for colname in cols)
 
+
+    @staticmethod
+    #TODO merge this function with _is_valid_versioned_table
+    def validate_repo_summary_cols(summary_cols_from_module):
+        missing_cols = [k for k in summary_cols_from_module.keys()
+                        if k not in
+                        ModelRepoSummaryCols.SUMMARY_REPO_COLS_POPULATED_BY_MODULES
+                        ]
+        if missing_cols:
+            plpy.error("Model Versioning Error: Summary columns {} " \
+                       "are not assigned any value.".format(missing_cols))
+
     @staticmethod
     #TODO rename this
     def is_valid_repo_table(model_repo_table):
@@ -183,7 +195,6 @@ class VersionedModelTableValidator(object):
             VersionedModelTableValidator.is_valid_repo_table(model_repo_table)
         else:
             plpy.error("Please provide a model_id to create a view for.")
-
 
 class VersionedModelViewCreator(object):
     """
@@ -688,7 +699,8 @@ class VersionedModelWriter(object):
         """
         # Get value of model_type before quoting it in function
         # _store_model_table_summary()
-        self._validate_repo_summary_cols(repo_summary_cols_dict)
+        VersionedModelTableValidator.validate_repo_summary_cols(
+            repo_summary_cols_dict)
         model_type_colname = ModelRepoSummaryCols.MODEL_TYPE_COLNAME
 
         # Assert that model_type and model_data_type are not NULL
@@ -727,17 +739,6 @@ class VersionedModelWriter(object):
                                                  self.model_view,
                                                  validate_tables=False)
         view_creator.create_view()
-
-    #TODO why is this not in the validator
-    def _validate_repo_summary_cols(self, summary_cols_from_module):
-        missing_cols = [k for k in summary_cols_from_module.keys()
-            if k not in
-            ModelRepoSummaryCols.SUMMARY_REPO_COLS_POPULATED_BY_MODULES
-            ]
-        if missing_cols:
-            plpy.error("Model Versioning Error: Summary columns {} " \
-                "are not assigned any value.".format(missing_cols))
-
 
     def _store_model_table_summary(self, repo_summary_cols_dict,
                                    model_summary_json):
