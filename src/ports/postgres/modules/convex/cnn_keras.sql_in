@@ -304,7 +304,7 @@ $$
 import plpy
 import os
 
-gpus_per_host=2
+gpus_per_host=4
 #device_name = '/gpu:{}'.format(seg % gpus_per_host)
 device_name = '/gpu:0'
 
@@ -354,7 +354,7 @@ config = K.tf.ConfigProto(log_device_placement=True,device_count = {'CPU' : 8, '
 config.gpu_options.allow_growth = False
 #  the following only lets tensorflow/keras see this specific GPU--no "with" contexts needed later
 #config.gpu_options.visible_device_list = str(seg % gpus_per_host)
-config.gpu_options.per_process_gpu_memory_fraction = 0.4
+config.gpu_options.per_process_gpu_memory_fraction = 0.9
 session = K.tf.Session(config=config)
 K.set_session(session)
 
