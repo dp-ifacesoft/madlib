@@ -305,7 +305,7 @@ import plpy
 import os
 
 gpus_per_seg=1
-segments_per_host=4
+segments_per_host=2
 #device_name = '/gpu:{}'.format(seg % segments_per_host)
 device_name = '/gpu:0'
 
@@ -355,7 +355,7 @@ config = K.tf.ConfigProto(log_device_placement=True,device_count = {'CPU' : 8, '
 config.gpu_options.allow_growth = False
 #  the following only lets tensorflow/keras see this specific GPU--no "with" contexts needed later
 #config.gpu_options.visible_device_list = str(seg % segments_per_host)
-config.gpu_options.per_process_gpu_memory_fraction = 0.9
+config.gpu_options.per_process_gpu_memory_fraction = 0.4
 session = K.tf.Session(config=config)
 K.set_session(session)
 
@@ -403,7 +403,7 @@ y_train = keras.utils.to_categorical(y_train,n_classes)
 
 #plpy.info("y train shape is {0}".format(y_train.shape))
 
-plpy.info("Prep times: set weights {}, compile {}, x,y to numpy arrays {}".format(prep_1 - after_deser, prep_3-prep1, mid-prep_3))
+plpy.info("Prep times: set weights {}, compile {}, x,y to numpy arrays {}".format(prep_1 - after_deser, prep_3-prep_1, mid-prep_3))
 
 if gpus_per_seg==1:
     plpy.info("fitting now with 1 GPU per segment")
