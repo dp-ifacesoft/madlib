@@ -94,6 +94,7 @@ class ModelRepoSummaryCols():
         MODEL_SIZE_COLNAME,
         MAD_VER_COLNAME]
 
+    #TODO do we need this
     SUMMARY_REPO_COLS_POPULATED_BY_MODULES = [
         MODEL_TYPE_COLNAME,
         START_TRAIN_TIME_COLNAME,

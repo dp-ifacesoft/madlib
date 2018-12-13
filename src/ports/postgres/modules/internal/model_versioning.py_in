@@ -56,7 +56,8 @@ class VersionedModelTableValidator(object):
 
 
     @staticmethod
-    #TODO merge this function with _is_valid_versioned_table
+    # TODO merge this function with _is_valid_versioned_table
+    # TODO why do we even need this function
     def validate_repo_summary_cols(summary_cols_from_module):
         missing_cols = [k for k in summary_cols_from_module.keys()
                         if k not in
@@ -420,8 +421,9 @@ class VersionedModelViewCreator(object):
                 "({model_data_colname}, 'double precision'::regtype::int) " \
                 "as {model_data_colname}"
         else:
-            plpy.error("Invalid model_data_type {}".format(
-                self.model_data_type))
+            plpy.error("Invalid model data type {0}. Support model data types "
+                       "are {1}".format(
+                self.model_data_type, ['bytea8', 'double precision[]']))
         model_data_str = model_data_str.format(
             schema_madlib=self.schema_madlib,
             model_data_colname=ModelRepoCols.MODEL_DATA_COLNAME)
@@ -625,7 +627,8 @@ class VersionedModelViewCreator(object):
                        attr_colnam=ModelRepoCols.ATTRIBUTES_COLNAME,
                        model_id_colname=model_id_colname))
         if not model_attrs_json:
-            plpy.error("Invalid model id ({0}) provided.".format(self.model_id))
+            plpy.error("model id ({0}) does not exist in {1}.".format(
+                self.model_id, self.model_repo_table))
 
         model_summary_json = plpy.execute("""
                 SELECT {summary_colname}
@@ -635,8 +638,8 @@ class VersionedModelViewCreator(object):
                        summary_colname=ModelRepoSummaryCols.SUMMARY_COLNAME,
                        model_id_colname=model_id_colname))
         if not model_summary_json:
-            plpy.error("Missing summary table for {0} {1}.".format(
-                model_id_colname, self.model_id))
+            plpy.error("model id ({0}) does not exist in {1}.".format(
+                self.model_id, self.model_repo_summary_table))
 
         return model_attrs_json[0], model_summary_json[0]
 
@@ -705,6 +708,7 @@ class VersionedModelWriter(object):
         """
         # Get value of model_type before quoting it in function
         # _store_model_table_summary()
+        #TODO do we need to even call this function
         VersionedModelTableValidator.validate_repo_summary_cols(
             repo_summary_cols_dict)
         model_type_colname = ModelRepoSummaryCols.MODEL_TYPE_COLNAME
