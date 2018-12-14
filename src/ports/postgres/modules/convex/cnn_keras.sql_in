@@ -59,7 +59,7 @@ RETURNS VOID AS $$
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
 
-    n_classes = 10
+    n_classes = 10 
 
     def deserialize(state,model_shapes):
         weightsList = []
@@ -188,8 +188,6 @@ RETURNS VOID AS $$
 
         model = Model(inputs, x, name='vgg16-places365')
 
-
-##########
         sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
         model.summary()
 
@@ -308,10 +306,6 @@ gpus_per_host=4
 #device_name = '/gpu:{}'.format(seg % gpus_per_host)
 device_name = '/gpu:0'
 
-if "CUDA_VISIBLE_DEVICES" in os.environ:
-    plpy.info("CUDA_VISIBLE_DEVICES={}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
-else:
-    plpy.info("CUDA_VISIBLE_DEVICES not set while loading keras in cnn_keras_transition")
 # Don't let tensorflow see anything but the 1 GPU we're supposed to use
 os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % gpus_per_host)
 
@@ -325,12 +319,6 @@ from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
 from keras import backend as K
 from tensorflow.python.client import device_lib
-
-avail = device_lib.list_local_devices()
-plpy.info("Available devices on system according to tensorflow: {}".format(len(avail)))
-for dev in avail:
-    plpy.info("name: {}, type: {}, memory_limit: {}MB".format(dev.name,dev.device_type,dev.memory_limit/1024/1024))
-
 
 def transition_deserialize(state,model_shapes):
     weightsList = []
@@ -346,12 +334,8 @@ def transition_deserialize(state,model_shapes):
 real_start = time.time()
 
 
-plpy.info('Device we are using is: {}'.format(device_name))
-#        config = tf.ConfigProto(intra_op_parallelism_threads=4,
-#           inter_op_parallelism_threads=4,
-#           device_count = {'CPU' : 8, 'GPU' : 1})
-config = K.tf.ConfigProto(log_device_placement=True,device_count = {'CPU' : 8, 'GPU' : 4})
-config.gpu_options.allow_growth = False
+config = K.tf.ConfigProto()
+config.gpu_options.allow_growth = False 
 #  the following only lets tensorflow/keras see this specific GPU--no "with" contexts needed later
 #config.gpu_options.visible_device_list = str(seg % gpus_per_host)
 config.gpu_options.per_process_gpu_memory_fraction = 0.9
@@ -370,7 +354,6 @@ with K.tf.device(device_name):
     for a in keras_model.get_weights():
         model_shapes.append(a.shape)
 
-plpy.info("Transition STARTED")
 start = time.time()
 buffer_count,weightsList = transition_deserialize(serialized_state,model_shapes)
 after_deser = time.time()
@@ -387,25 +370,20 @@ with K.tf.device(device_name):
 prep_3 = time.time() # compile()
 if ind_var == None:
    return None
-#plpy.info("buffer len {0} {1}".format(len(ind_var), len(dep_var)))
 x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255.0
 y_train = np.array(dep_var)
-n_classes = 10
+n_classes = 10 
 mid = time.time() # convert x,y input to numpy arrays
 y_train = keras.utils.to_categorical(y_train,n_classes)
 
-plpy.info("Prep times: set weights {}, compile {}, x,y to numpy arrays {}".format(prep_1 - after_deser, prep_3-prep_1, mid-prep_3))
-
-plpy.info("Fitting now...")
 with K.tf.device(device_name):
     keras_model.fit(x_train, y_train,
        batch_size=25,
        epochs=1,
        verbose=0)
 end = time.time()
-plpy.info("done with fit")
 model_string = str(buffer_count+1) + 'splitter'
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
@@ -419,7 +397,6 @@ sess = K.get_session()
 K.clear_session()
 sess.close()
 del K
-plpy.info("Garbage collection 1 in cnn_keras_transition: {}".format(gc.collect()))
 
 for a in weights:
     model_string += a.tostring()
@@ -429,8 +406,6 @@ del weights
 
 before_return = time.time()
 plpy.info("DeSer ModelArch: {0}, DeSer ModelState: {1}, Prep: {2}, Fit: {3}, Ser ModelState: {4}".format(start-real_start,after_deser-start, mid-after_deser, end-mid, before_return-end))
-
-plpy.info("TRANSITION done.")
 
 return model_string
 
