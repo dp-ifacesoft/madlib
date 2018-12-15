@@ -524,21 +524,21 @@ minibatch_preprocessing.sql_in
 
  */
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.minibatch_preprocessor(
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan(
     source_table                VARCHAR,
     output_table                VARCHAR,
-    dependent_varname           VARCHAR,
-    independent_varname         VARCHAR,
-    grouping_cols               VARCHAR,
-    buffer_size                 INTEGER,
-    one_hot_encode_int_dep_var  BOOLEAN
+    eps           FLOAT8,
+    min_samples         INTEGER,
+    fn_dist               VARCHAR,
+    algorithm                 VARCHAR,
+    grouping_cols  VARCHAR
 ) RETURNS VOID AS $$
-    PythonFunctionBodyOnly(utilities, minibatch_preprocessing)
+    PythonFunctionBodyOnly(utilities, dbscan)
     from utilities.control import MinWarning
     with AOControl(False):
         with MinWarning('error'):
-            minibatch_preprocessor_obj = minibatch_preprocessing.MiniBatchPreProcessor(**globals())
-            minibatch_preprocessor_obj.minibatch_preprocessor()
+            dbscan_obj = dbscan.Dbscan(**globals())
+            dbscan_obj.dbscan()
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
