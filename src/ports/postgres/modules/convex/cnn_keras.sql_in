@@ -392,17 +392,20 @@ del keras_model
 del weightsList
 del x_train
 del y_train
+gc.collect()
 
 sess = K.get_session()
 K.clear_session()
 sess.close()
 del K
+gc.collect()
 
 for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
 
 del weights
+gc.collect()
 
 before_return = time.time()
 plpy.info("DeSer ModelArch: {0}, DeSer ModelState: {1}, Prep: {2}, Fit: {3}, Ser ModelState: {4}".format(start-real_start,after_deser-start, mid-after_deser, end-mid, before_return-end))
@@ -421,6 +424,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_merge(
 $$
 import numpy as np
 import time
+import gc
 #import plpy
 
 #merge_start = time.time()
@@ -451,6 +455,17 @@ for a in merged_weights:
 #merge_finish = time.time()
 #plpy.info("cnn_keras_merge time = {}".format(merge_finish-merge_start))
 
+del merged_weights
+del merge_weight1
+del merge_weight2
+del weights1
+del weights2
+del total_buffers
+del split_state1
+del split_state2
+
+gc.collect()
+
 return model_string
 $$
 LANGUAGE plpythonu
@@ -461,13 +476,15 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_final(
 ) RETURNS BYTEA AS
 $$
 import numpy as np
+import gc
 
 weights = [np.fromstring(a,dtype='float32') for a in filter(None,state.split('splitter')[1:])]
 model_string = ''
 for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
-
+del weights
+gc.collect()
 return model_string
 $$
 LANGUAGE plpythonu
