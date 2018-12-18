@@ -67,7 +67,6 @@ def _tree_validate_args(
             "Decision tree error: Invalid data table.")
     _assert(table_exists(training_table_name),
             "Decision tree error: Data table is missing.")
-    plpy.info('repo is {}'.format(model_repository_table))
     if not model_repository_table:
         _assert(not table_exists(output_table_name, only_first_schema=True),
             "Decision tree error: Output table already exists.")
