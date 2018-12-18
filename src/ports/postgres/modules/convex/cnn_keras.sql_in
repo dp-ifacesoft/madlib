@@ -388,22 +388,19 @@ model_string = str(buffer_count+1) + 'splitter'
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
 
-del keras_model
-del weightsList
-del x_train
-del y_train
-gc.collect()
-
 sess = K.get_session()
 K.clear_session()
 sess.close()
-del K
-gc.collect()
 
 for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
 
+del keras_model
+del weightsList
+del x_train
+del y_train
+del K
 del weights
 gc.collect()
 
