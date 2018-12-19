@@ -87,21 +87,28 @@ class VersionedModelTableValidator(object):
             model_repo_table_cols = get_cols(model_repo_table)
             _assert(VersionedModelTableValidator._is_valid_versioned_table(
                 model_repo_table_cols, ModelRepoCols.MODEL_TABLE_COLS),
-                "Unexpected columns found in model repo table {0}: {1}.".
-                    format(model_repo_table, model_repo_table_cols))
+                "Model repository table {0} is in the wrong format. "\
+                "Unexpected columns found : {1}.". format(
+                    model_repo_table, model_repo_table_cols))
 
             # Now check for model_repo_table_summary cols and types.
             model_repo_table_summary_cols = get_cols(model_repo_table_summary)
             _assert(VersionedModelTableValidator._is_valid_versioned_table(
                 model_repo_table_summary_cols, ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS_TYPES),
-                "Unexpected columns found in model repo summary table {0}: {1}.".
-                    format(model_repo_table_summary, model_repo_table_summary_cols))
+                "Model repository summary table {0} is in the wrong format. "\
+                "Unexpected columns found: {1}.". format(
+                    model_repo_table_summary, model_repo_table_summary_cols))
+
         elif model_repo_table_exists or model_repo_table_summary_exists:
             # If only one of the two tables exists, it is invalid.
-            #TODO error_message
-            plpy.error("Table {0} does not exist.".format(
-                model_repo_table_summary if model_repo_table_exists
-                    else model_repo_table))
+            if model_repo_table_exists:
+                error_table_name = "Model repository summary table {}".format(
+                    model_repo_table_summary)
+            else:
+                error_table_name = "Model repository table {}".format(
+                    model_repo_table)
+
+            plpy.error("{0} does not exist.".format(error_table_name))
 
         return exists
 
@@ -185,9 +192,9 @@ class VersionedModelTableValidator(object):
             # Assert that tables/views named out_table and out_table_summary
             # exist.
             _assert(table_exists(model_table),
-                "Given model table/view {} does not exist.".format(model_table))
+                "Model table/view {} does not exist.".format(model_table))
             _assert(table_exists(model_table_summary),
-                "Given model summary table/view {} does not exist.".format(
+                "Model summary table/view {} does not exist.".format(
                     model_table_summary))
 
         return create_view_from_repo_table
