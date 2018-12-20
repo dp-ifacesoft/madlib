@@ -64,7 +64,7 @@ class VersionedModelTableValidator(object):
                         ModelRepoSummaryCols.SUMMARY_REPO_COLS_POPULATED_BY_MODULES
                         ]
         if missing_cols:
-            plpy.error("Model Versioning Error: Summary columns {} " \
+            plpy.error("Summary columns {} " \
                        "are not assigned any value.".format(missing_cols))
 
     @staticmethod
@@ -131,17 +131,16 @@ class VersionedModelTableValidator(object):
         _assert(not table_exists(model_view,
                                  only_first_schema=True,
                                  relkind=TABLES_ONLY),
-            "Error: A table named {0} already exists. The model is "\
-            "expected to be versioned in {1}, while creating a view "\
-            "named {0} pointing to the model.".format(
-                model_view, model_repo_table))
+            "A model table named {0} already exists. "\
+            "Drop or rename this table if you want to create a model " \
+            "repository table with the same name {0}.".format(model_view))
+
         _assert(not table_exists(model_view_summary,
                                  only_first_schema=True,
                                  relkind=TABLES_ONLY),
-            "Error: A table named {0} already exists. The summary of "\
-            "the model is expected to be versioned in {1}, while creating "\
-            "a view named {0} pointing to the model summary.".format(
-                model_view, model_repo_table_summary))
+            "Error: A model summary table named {0} already exists. " \
+            "Drop or rename this table if you want to create a model " \
+            "repository called {0}.".format(model_repo_table_summary))
 
         return exists
 
@@ -177,12 +176,12 @@ class VersionedModelTableValidator(object):
                 model_repo_table_summary, relkind=VIEWS_ONLY)
 
             if is_model_repo_a_view or is_model_repo_summary_a_view:
-                plpy.error("Model Versioning Error: The repo and summary tables " \
+                plpy.error("The model repository and summary tables "\
                            "are expected to be tables and not views.")
 
             exists = VersionedModelTableValidator.is_valid_repo_table(model_table)
             if not exists:
-                plpy.error("Model Versioning Error: The repository tables "\
+                plpy.error("The repository tables "\
                     "{0} and/or {1} do not exist.".format(
                         model_repo_table, model_repo_table_summary))
             create_view_from_repo_table = True
@@ -634,7 +633,7 @@ class VersionedModelViewCreator(object):
                        attr_colnam=ModelRepoCols.ATTRIBUTES_COLNAME,
                        model_id_colname=model_id_colname))
         if not model_attrs_json:
-            plpy.error("model id ({0}) does not exist in {1}.".format(
+            plpy.error("Model id {0} does not exist in model repository table {1}.".format(
                 self.model_id, self.model_repo_table))
 
         model_summary_json = plpy.execute("""
@@ -645,7 +644,9 @@ class VersionedModelViewCreator(object):
                        summary_colname=ModelRepoSummaryCols.SUMMARY_COLNAME,
                        model_id_colname=model_id_colname))
         if not model_summary_json:
-            plpy.error("model id ({0}) does not exist in {1}.".format(
+            plpy.error("Model id {0} does not exist in model repository " \
+            " summary table {1}. This means the model repository table and " \
+            " model repository summary table are not in sync.".format(
                 self.model_id, self.model_repo_summary_table))
 
         return model_attrs_json[0], model_summary_json[0]
@@ -660,7 +661,7 @@ class VersionedModelWriter(object):
             self.model_repo_table_summary = get_summary_tablename(
                 self.model_repo_table)
         else:
-            plpy.error("Model Versioning Error: The model_repository_table " \
+            plpy.error("The model_repository_table " \
                 "must be specified to write the model to a versioned table.")
         self.MODEL_VER_DELIMITER = '$model_ver$'
         # Validate repo table
@@ -724,7 +725,7 @@ class VersionedModelWriter(object):
         if repo_summary_cols_dict[model_type_colname]:
             self.model_type = repo_summary_cols_dict[model_type_colname].strip()
         else:
-            plpy.error("Model Versioning Error: Invalid model type.")
+            plpy.error("Invalid model type.")
         # Get value of model_data_type before quoting it in function
         # _store_model_table_summary()
         # TODO we may not need to test if model_data_type is null. We test
@@ -733,7 +734,7 @@ class VersionedModelWriter(object):
         if repo_summary_cols_dict[model_dtype_colname]:
             self.model_data_type = repo_summary_cols_dict[model_dtype_colname].strip()
         else:
-            plpy.error("Model Versioning Error: Invalid model data type.")
+            plpy.error("Invalid model data type.")
         # We need a unique model id for each model train call (for every
         # such call, a single row is inserted into the summary table,
         # but  in case of grouping, multiple rows could be inserted into the
