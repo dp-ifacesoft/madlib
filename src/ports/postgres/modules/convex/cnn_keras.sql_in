@@ -319,6 +319,8 @@ from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
 from keras import backend as K
 from tensorflow.python.client import device_lib
+from pympler import tracker
+tr = tracker.SummaryTracker()
 
 def transition_deserialize(state,model_shapes):
     weightsList = []
@@ -331,8 +333,12 @@ def transition_deserialize(state,model_shapes):
 
     return int(split_state[0]),weightsList
 
-real_start = time.time()
+plpy.info("Beginning of transition function:")
+print("hello")
+plpy.info("after hello")
+tr.print_diff()
 
+real_start = time.time()
 
 config = K.tf.ConfigProto()
 config.gpu_options.allow_growth = False 
@@ -396,13 +402,23 @@ for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
 
+plpy.info("Before deletes:")
+tr.print_diff()
+
 del keras_model
 del weightsList
 del x_train
 del y_train
 del K
 del weights
+
+plpy.info("After deletes:")
+tr.print_diff()
+
 gc.collect()
+
+plpy.info("After collect:")
+tr.print_diff()
 
 before_return = time.time()
 plpy.info("DeSer ModelArch: {0}, DeSer ModelState: {1}, Prep: {2}, Fit: {3}, Ser ModelState: {4}".format(start-real_start,after_deser-start, mid-after_deser, end-mid, before_return-end))
