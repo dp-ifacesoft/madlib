@@ -59,7 +59,7 @@ RETURNS VOID AS $$
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
 
-    n_classes = 10 
+    n_classes = 50
 
     def deserialize(state,model_shapes):
         weightsList = []
@@ -392,7 +392,7 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 256
 y_train = np.array(dep_var)
-n_classes = 10
+n_classes = 50
 y_train = keras.utils.to_categorical(y_train,n_classes)
 
 start_fit = time.time()
@@ -424,11 +424,6 @@ for a in weights:
 
 del x_train
 del y_train
-#del weightsList
-#del weights
-#del K
-#del keras_model
-#gc.collect()
 
 end_transition = time.time()
 
@@ -489,7 +484,7 @@ for a in merged_weights:
 #del total_buffers
 #del split_state1
 #del split_state2
-
+#
 #gc.collect()
 
 return model_string
