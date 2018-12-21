@@ -272,24 +272,24 @@ update dt_golf set id_2 = id % 2;
 -- also adding a categorical with just a single level (windy2)
 DROP TABLE IF EXISTS train_output, train_output_summary, train_output_cv;
 SELECT tree_train('dt_golf'::text,         -- source table
-                         'train_output'::text,    -- output model table
-                         'id'::text,              -- id column
-                         'temperature::double precision'::text,           -- response
-                         'humidity, windy2, "Cont_features"'::text,   -- features
-                         NULL::text,        -- exclude columns
-                         NULL::text,        -- no grouping
-                         ''::text,          -- no repo tables for model versioning
-                         ''::text,           -- no name for model versioning
-                         ''::text,           -- no descriptions for model versioning
-                         'gini'::text,      -- split criterion
-                         NULL::text,        -- no weights
-                         10::integer,       -- max depth
-                         6::integer,        -- min split
-                         2::integer,        -- min bucket
-                         3::integer,        -- number of bins per continuous variable
-                         'cp=0.01, n_folds=2',          -- cost-complexity pruning parameter
-                         'null_as_category=True'
-                         );
+                  'train_output'::text,    -- output model table
+                  'id'::text,              -- id column
+                  'temperature::double precision'::text,           -- response
+                  'humidity, windy2, "Cont_features"'::text,   -- features
+                  NULL::text,        -- exclude columns
+                  NULL::text,        -- no grouping
+                  ''::text,          -- no repo tables for model versioning
+                  ''::text,           -- no name for model versioning
+                  ''::text,           -- no descriptions for model versioning
+                  'gini'::text,      -- split criterion
+                  NULL::text,        -- no weights
+                  10::integer,       -- max depth
+                  6::integer,        -- min split
+                  2::integer,        -- min bucket
+                  3::integer,        -- number of bins per continuous variable
+                  'cp=0.01, n_folds=2',          -- cost-complexity pruning parameter
+                  'null_as_category=True'
+                  );
 SELECT _print_decision_tree(model_data) from train_output;
 SELECT tree_display('train_output', False);
 SELECT impurity_var_importance FROM train_output;
@@ -305,7 +305,7 @@ SELECT tree_train('dt_golf'::text,         -- source table
                   'temperature::double precision'::text,       -- response
                   '"OUTLOOK", humidity, windy, cat_features'::text, -- features
                   NULL::text,        -- exclude columns
-                  NULL::text,        -- no grouping
+                  'class'::text,        -- no grouping
                   ''::text,          -- no repo tables for model versioning
                   ''::text,           -- no name for model versioning
                   ''::text,           -- no descriptions for model versioning
@@ -362,7 +362,7 @@ SELECT tree_train('dt_golf'::text,         -- source table
                   ''::text,          -- no repo tables for model versioning
                   ''::text,           -- no name for model versioning
                   ''::text,           -- no descriptions for model versioning
-                 'mse'::text,      -- split criterion
+                  'mse'::text,      -- split criterion
                   NULL::text,        -- no weights
                   NULL::integer,     -- max depth
                   6::integer,        -- min split
@@ -481,7 +481,7 @@ SELECT tree_train('array_test'::text,         -- source table
                   6::integer,        -- min split
                   2::integer,        -- min bucket
                   8::integer        -- number of bins per continuous variable
-              );
+                  );
 SELECT * FROM train_output_summary;
 SELECT _print_decision_tree(model_data) FROM train_output;
 SELECT tree_display('train_output', False);
@@ -584,7 +584,7 @@ SELECT tree_train('mt_cars',         -- source table
                   10,                -- number of splits
                   NULL,              -- pruning parameters
                   'max_surrogates=2' -- number of surrogates
-                         );
+                  );
 
 DROP TABLE IF EXISTS imp_output;
 SELECT get_var_importance('train_output','imp_output');
@@ -609,19 +609,19 @@ SELECT tree_train('dt_golf',
 'train_output',
 'id',
 'class',
-'"OUTLOOK", temperature, windy',
-                   '"OUTLOOK", temperature',   -- features
-                   NULL::text,        -- exclude columns
-                   NULL::text,        -- no grouping
-                   ''::text,          -- no repo tables for model versioning
-                   ''::text,           -- no name for model versioning
-                   ''::text,           -- no descriptions for model versioning
-                   'gini'::text,      -- split criterion
-                   NULL::text,        -- no weights, all observations treated equally
-5,
-3,
-1,
-10);
+'"OUTLOOK", temperature, windy',      -- features
+NULL::text,        -- exclude columns
+NULL::text,        -- no grouping
+''::text,          -- no repo tables for model versioning
+''::text,          -- no name for model versioning
+''::text,          -- no descriptions for model versioning
+'gini'::text,      -- split criterion
+NULL::text,        -- no weights, all observations treated equally
+5,                 -- max depth
+3,                 -- min split
+1,                 -- number of bins per continuous
+10                 -- number of splits
+);
 
 SELECT assert
 (
@@ -661,13 +661,17 @@ SELECT tree_train('dt_golf',
 'class',
 '*',
 '"OUTLOOK"',
-'gini',
-NULL::text,
-NULL::text,
-5,
-3,
-1,
-10);
+NULL::text,        -- no grouping
+''::text,          -- no repo tables for model versioning
+''::text,          -- no name for model versioning
+''::text,          -- no descriptions for model versioning
+'gini'::text,      -- split criterion
+NULL::text,        -- no weights, all observations treated equally
+5,                 -- max depth
+3,                 -- min split
+1,                 -- number of bins per continuous
+10                 -- number of splits
+);
 
 SELECT assert
 (
@@ -683,21 +687,25 @@ train_output_summary) summary;
 -- Call tree_train multiple times without dropping the output table.
 -- Assert that it creates the view and the repo table along with the summary table
 SELECT tree_train('mt_cars',         -- source table
-                         'train_view',    -- output model table
-                         'id',              -- id column
-                         'mpg',             -- dependent variable
-                         '*',               -- features
-                         'id, hp, drat, am, gear, carb',  -- exclude columns
-                         'mse',             -- split criterion
-                         NULL::text,        -- no grouping
-                         NULL::text,        -- no weights, all observations treated equally
-                         10,                -- max depth
-                         8,                 -- min split
-                         3,                 -- number of bins per continuous variable
-                         10,                -- number of splits
-                         NULL,              -- pruning parameters
-                         'max_surrogates=2',-- number of surrogates
-                         NULL,'train_repo','model 1','desc 1');
+                  'train_view',    -- output model table
+                  'id',              -- id column
+                  'mpg',             -- dependent variable
+                  '*',               -- features
+                  'id, hp, drat, am, gear, carb',  -- exclude columns
+                  NULL::text,        -- no grouping
+                  'train_repo',          -- no repo tables for model versioning
+                  'model 1',           -- no name for model versioning
+                  'desc 1',           -- no descriptions for model versioning
+                  'mse'::text,      -- split criterion
+                  NULL::text,        -- no weights, all observations treated equally
+                  10,                -- max depth
+                  8,                 -- min split
+                  3,                 -- number of bins per continuous variable
+                  10,                -- number of splits
+                  NULL,              -- pruning parameters
+                  'max_surrogates=2',-- number of surrogates
+                  NULL
+                  );
 
 SELECT assert(max_model_id = 1 , 'Max model_id should have been 1.')
 FROM (SELECT max(model_id) AS max_model_id FROM train_repo) s;
@@ -712,14 +720,20 @@ SELECT tree_train('dt_golf',         -- source table
                    'class',           -- response
                    '"OUTLOOK", temperature',   -- features
                    NULL,        -- exclude columns
-                   'gini',            -- split criterion
-                   NULL,            -- grouping
-                   NULL,        -- no weights, all observations treated equally
+                   NULL::text,        -- no grouping
+                   'train_repo',          -- no repo tables for model versioning
+                   'name 2',           -- no name for model versioning
+                   'desc 2',           -- no descriptions for model versioning
+                   'gini'::text,      -- split criterion
+                   NULL::text,        -- no weights, all observations treated equally
                    NULL,                 -- max depth
                    6,                 -- min split
                    2,                 -- min bucket
                    3,                 -- number of bins per continuous variable
-                   NULL,NULL,NULL,'train_repo','name 2','desc 2');
+                   NULL,
+                   NULL,
+                   NULL
+                   );
 
 -- assert cols in summary table
 SELECT assert
@@ -780,16 +794,26 @@ SELECT assert(max_model_id = 2 , 'The highest model_id should have been 2.') FRO
 
 -- Test prediction with probability
 DROP TABLE IF EXISTS train_output, train_output_summary;
-SELECT tree_train('dt_golf',
-'train_view',
-'id',
-'class',
-'"OUTLOOK", temperature, windy',
-NULL,
-'gini',
-NULL,
-NULL,
-5, 3, 1, 10,NULL, NULL,NULL,'train_repo','name 3','desc 3');
+SELECT tree_train('dt_golf',         -- source table
+                   'train_view',    -- output model table
+                   'id',              -- id column
+                   'class',           -- response
+                   '"OUTLOOK", temperature, windy',   -- features
+                   NULL,        -- exclude columns
+                   NULL::text,        -- no grouping
+                   'train_repo',          -- no repo tables for model versioning
+                   'name 3',           -- no name for model versioning
+                   'desc 3',           -- no descriptions for model versioning
+                   'gini'::text,      -- split criterion
+                   NULL::text,        -- no weights, all observations treated equally
+                   5,                 -- max depth
+                   3,                 -- min split
+                   1,                 -- min bucket
+                   10,                 -- number of bins per continuous variable
+                   NULL,
+                   NULL,
+                   NULL
+                   );
 
 DROP TABLE IF EXISTS prediction_results;
 SELECT tree_predict('train_view', 'dt_golf', 'prediction_results', 'prob');
@@ -803,14 +827,19 @@ SELECT tree_train('dt_golf',         -- source table
                    'class',           -- response
                    '"OUTLOOK", temperature',   -- features
                    NULL,        -- exclude columns
-                   'gini',            -- split criterion
-                   NULL,            -- grouping
-                   NULL,        -- no weights, all observations treated equally
+                   NULL::text,        -- no grouping
+                   'train_repo',          -- no repo tables for model versioning
+                   NULL::text,           -- no name for model versioning
+                   NULL::text,           -- no descriptions for model versioning
+                   'gini'::text,      -- split criterion
+                   NULL::text,        -- no weights, all observations treated equally
                    NULL,                 -- max depth
                    6,                 -- min split
                    2,                 -- min bucket
                    3,                 -- number of bins per continuous variable
-                   NULL,NULL,NULL,'train_repo');
+                   NULL,
+                   NULL,
+                   NULL);
 SELECT assert
 (
     name                        is NULL AND
