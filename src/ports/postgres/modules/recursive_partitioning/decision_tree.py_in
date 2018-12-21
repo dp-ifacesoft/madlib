@@ -447,11 +447,10 @@ def _build_tree(schema_madlib, is_classification, split_criterion,
 
 def tree_train(schema_madlib, training_table_name, output_table_name,
                id_col_name, dependent_variable, features_to_include,
-               features_to_exclude, split_criterion,
-               grouping_col, weights, max_depth,
+               features_to_exclude, grouping_col, model_repository_table,
+               name, description, split_criterion, weights, max_depth,
                min_split, min_bucket, n_bins, pruning_params,
-               null_handling_params, verbose_mode, model_repository_table,
-               name, description, **kwargs):
+               null_handling_params, verbose_mode, **kwargs):
     """ Decision tree main training function
 
     Args:

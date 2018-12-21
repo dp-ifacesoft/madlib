@@ -277,8 +277,11 @@ SELECT tree_train('dt_golf'::text,         -- source table
                          'temperature::double precision'::text,           -- response
                          'humidity, windy2, "Cont_features"'::text,   -- features
                          NULL::text,        -- exclude columns
-                         'gini'::text,      -- split criterion
                          NULL::text,        -- no grouping
+                         ''::text,          -- no repo tables for model versioning
+                         ''::text,           -- no name for model versioning
+                         ''::text,           -- no descriptions for model versioning
+                         'gini'::text,      -- split criterion
                          NULL::text,        -- no weights
                          10::integer,       -- max depth
                          6::integer,        -- min split
@@ -302,8 +305,11 @@ SELECT tree_train('dt_golf'::text,         -- source table
                   'temperature::double precision'::text,       -- response
                   '"OUTLOOK", humidity, windy, cat_features'::text, -- features
                   NULL::text,        -- exclude columns
-                  'gini'::text,      -- split criterion
-                  'class'::text,     -- grouping
+                  NULL::text,        -- no grouping
+                  ''::text,          -- no repo tables for model versioning
+                  ''::text,           -- no name for model versioning
+                  ''::text,           -- no descriptions for model versioning
+                 'gini'::text,      -- split criterion
                   NULL::text,        -- no weights
                   10::integer,       -- max depth
                   2::integer,        -- min split
@@ -352,8 +358,11 @@ SELECT tree_train('dt_golf'::text,         -- source table
                   'temperature::double precision'::text,           -- response
                   '"OUTLOOK", humidity'::text,   -- features
                   NULL::text,        -- exclude columns
-                  'mse'::text,       -- split criterion
                   'id_2'::text,      -- grouping col
+                  ''::text,          -- no repo tables for model versioning
+                  ''::text,           -- no name for model versioning
+                  ''::text,           -- no descriptions for model versioning
+                 'mse'::text,      -- split criterion
                   NULL::text,        -- no weights
                   NULL::integer,     -- max depth
                   6::integer,        -- min split
@@ -388,8 +397,11 @@ SELECT tree_train('dt_golf'::text,         -- source table
                   'temperature::double precision'::text,           -- response
                   '"OUTLOOK", temperature'::text,   -- features
                   NULL::text,        -- exclude columns
-                  'mse'::text,       -- split criterion
-                  NULL::text,      -- grouping col
+                  NULL::text,        -- no grouping
+                  ''::text,          -- no repo tables for model versioning
+                  ''::text,           -- no name for model versioning
+                  ''::text,           -- no descriptions for model versioning
+                 'mse'::text,      -- split criterion
                   NULL::text,        -- no weights
                   NULL::integer,     -- max depth
                   6::integer,        -- min split
@@ -459,8 +471,11 @@ SELECT tree_train('array_test'::text,         -- source table
                   'dep::double precision'::text,           -- response
                   'feat'::text,   -- features
                   NULL::text,        -- exclude columns
-                  'mse'::text,      -- split criterion
                   NULL::text,        -- no grouping
+                  ''::text,          -- no repo tables for model versioning
+                  ''::text,           -- no name for model versioning
+                  ''::text,           -- no descriptions for model versioning
+                  'mse'::text,      -- split criterion
                   NULL::text,        -- no weights
                   2::integer,     -- max depth
                   6::integer,        -- min split
@@ -481,8 +496,11 @@ SELECT tree_train('dt_golf',         -- source table
                    'class',           -- response
                    '"OUTLOOK", temperature',   -- features
                    NULL::text,        -- exclude columns
-                   'gini',            -- split criterion
                    NULL::text,        -- no grouping
+                   ''::text,          -- no repo tables for model versioning
+                   ''::text,           -- no name for model versioning
+                   ''::text,           -- no descriptions for model versioning
+                   'gini'::text,      -- split criterion
                    NULL::text,        -- no weights, all observations treated equally
                    5,                 -- max depth
                    3,                 -- min split
@@ -549,20 +567,23 @@ INSERT INTO mt_cars VALUES
 
 DROP TABLE IF EXISTS train_output, train_output_summary, train_output_cv;
 SELECT tree_train('mt_cars',         -- source table
-                         'train_output',    -- output model table
-                         'id',              -- id column
-                         'mpg',             -- dependent variable
-                         '*',               -- features
-                         'id, hp, drat, am, gear, carb',  -- exclude columns
-                         'mse',             -- split criterion
-                         NULL::text,        -- no grouping
-                         NULL::text,        -- no weights, all observations treated equally
-                         10,                -- max depth
-                         8,                 -- min split
-                         3,                 -- number of bins per continuous variable
-                         10,                -- number of splits
-                         NULL,              -- pruning parameters
-                         'max_surrogates=2' -- number of surrogates
+                  'train_output',    -- output model table
+                  'id',              -- id column
+                  'mpg',             -- dependent variable
+                  '*',               -- features
+                  'id, hp, drat, am, gear, carb',  -- exclude columns
+                  NULL::text,        -- no grouping
+                  ''::text,          -- no repo tables for model versioning
+                  ''::text,           -- no name for model versioning
+                  ''::text,           -- no descriptions for model versioning
+                  'mse'::text,      -- split criterion
+                  NULL::text,        -- no weights, all observations treated equally
+                  10,                -- max depth
+                  8,                 -- min split
+                  3,                 -- number of bins per continuous variable
+                  10,                -- number of splits
+                  NULL,              -- pruning parameters
+                  'max_surrogates=2' -- number of surrogates
                          );
 
 DROP TABLE IF EXISTS imp_output;
@@ -589,10 +610,14 @@ SELECT tree_train('dt_golf',
 'id',
 'class',
 '"OUTLOOK", temperature, windy',
-NULL::text,
-'gini',
-NULL::text,
-NULL::text,
+                   '"OUTLOOK", temperature',   -- features
+                   NULL::text,        -- exclude columns
+                   NULL::text,        -- no grouping
+                   ''::text,          -- no repo tables for model versioning
+                   ''::text,           -- no name for model versioning
+                   ''::text,           -- no descriptions for model versioning
+                   'gini'::text,      -- split criterion
+                   NULL::text,        -- no weights, all observations treated equally
 5,
 3,
 1,

@@ -55,8 +55,11 @@ SELECT tree_train('dt_golf'::text,         -- source table
                          'temperature::double precision'::text,           -- response
                          'humidity, windy'::text,   -- features
                          NULL::text,        -- exclude columns
-                         'gini'::text,      -- split criterion
                          NULL::text,        -- no grouping
+                         ''::text,          -- no repo tables for model versioning
+                         ''::text,           -- no name for model versioning
+                         ''::text,           -- no descriptions for model versioning
+                         'gini'::text,      -- split criterion
                          NULL::text,        -- no weights
                          1::integer,       -- max depth
                          2::integer,        -- min split

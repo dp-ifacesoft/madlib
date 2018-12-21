@@ -1567,10 +1567,13 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    features_to_include            TEXT,
-    features_to_exclude TEXT,
+    features_to_include         TEXT,
+    features_to_exclude         TEXT,
+    grouping_col                TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
     split_criterion             TEXT,
-    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1578,19 +1581,16 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     n_bins                      INTEGER,
     pruning_params              TEXT,
     null_handling_params        TEXT,
-    verbose_mode                BOOLEAN,
-    model_repository_table      TEXT,
-    name                        TEXT,
-    description                 TEXT
+    verbose_mode                BOOLEAN
 ) RETURNS VOID AS $$
     PythonFunctionBodyOnly(recursive_partitioning, decision_tree)
     with AOControl(False):
         decision_tree.tree_train(
           schema_madlib, training_table_name, output_table_name, id_col_name,
           dependent_variable, features_to_include, features_to_exclude,
-          split_criterion, grouping_col, weights, max_depth, min_split,
+          grouping_col,model_repository_table, name, description, split_criterion, weights, max_depth, min_split,
           min_bucket, n_bins, pruning_params, null_handling_params,
-          verbose_mode, model_repository_table, name, description)
+          verbose_mode)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 ------------------------------------------------------------
@@ -1602,88 +1602,13 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     output_table_name           TEXT,
     id_col_name                 TEXT,
     dependent_variable          TEXT,
-    features_to_include            TEXT,
-    features_to_exclude TEXT,
-    split_criterion             TEXT,
-    grouping_col               TEXT,
-    weights                     TEXT,
-    max_depth                   INTEGER,
-    min_split                   INTEGER,
-    min_bucket                  INTEGER,
-    n_bins                      INTEGER,
-    pruning_params              TEXT,
-    null_handling_params        TEXT,
-    verbose_mode                BOOLEAN,
+    features_to_include         TEXT,
+    features_to_exclude         TEXT,
+    grouping_col                TEXT,
     model_repository_table      TEXT,
-    name                        TEXT
-) RETURNS VOID AS $$
-    -- verbose = false
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    $11, $12, $13, $14, $15, $16, $17, $18,
-                                    ''::TEXT);
-$$ LANGUAGE SQL VOLATILE
-m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
-    training_table_name         TEXT,
-    output_table_name           TEXT,
-    id_col_name                 TEXT,
-    dependent_variable          TEXT,
-    features_to_include            TEXT,
-    features_to_exclude TEXT,
+    name                        TEXT,
+    description                 TEXT,
     split_criterion             TEXT,
-    grouping_col               TEXT,
-    weights                     TEXT,
-    max_depth                   INTEGER,
-    min_split                   INTEGER,
-    min_bucket                  INTEGER,
-    n_bins                      INTEGER,
-    pruning_params              TEXT,
-    null_handling_params        TEXT,
-    verbose_mode                BOOLEAN,
-    model_repository_table      TEXT
-) RETURNS VOID AS $$
-    -- verbose = false
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    $11, $12, $13, $14, $15, $16, $17,
-                                    ''::TEXT, ''::TEXT);
-$$ LANGUAGE SQL VOLATILE
-m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
-    training_table_name         TEXT,
-    output_table_name           TEXT,
-    id_col_name                 TEXT,
-    dependent_variable          TEXT,
-    features_to_include            TEXT,
-    features_to_exclude TEXT,
-    split_criterion             TEXT,
-    grouping_col               TEXT,
-    weights                     TEXT,
-    max_depth                   INTEGER,
-    min_split                   INTEGER,
-    min_bucket                  INTEGER,
-    n_bins                      INTEGER,
-    pruning_params              TEXT,
-    null_handling_params        TEXT,
-    verbose_mode                BOOLEAN
-) RETURNS VOID AS $$
-    -- verbose = false
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    $11, $12, $13, $14, $15, $16,
-                                    NULL::TEXT, ''::TEXT, ''::TEXT);
-$$ LANGUAGE SQL VOLATILE
-m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
-    training_table_name         TEXT,
-    output_table_name           TEXT,
-    id_col_name                 TEXT,
-    dependent_variable          TEXT,
-    features_to_include            TEXT,
-    features_to_exclude TEXT,
-    split_criterion             TEXT,
-    grouping_col               TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1694,9 +1619,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
 ) RETURNS VOID AS $$
     -- verbose = false
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    $11, $12, $13, $14, $15, FALSE,
-                                    NULL::TEXT, ''::TEXT, ''::TEXT);
-
+                                    $11, $12, $13, $14, $15, $16, $17, $18,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1707,8 +1631,11 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT,
     features_to_exclude TEXT,
-    split_criterion             TEXT,
     grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
+    split_criterion             TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
@@ -1716,9 +1643,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     n_bins                      INTEGER,
     pruning_params              TEXT
 ) RETURNS VOID AS $$
+    -- verbose = false
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    $11, $12, $13, $14, NULL::text, FALSE,
-                                    NULL::TEXT, ''::TEXT, ''::TEXT);
+                                    $11, $12, $13, $14, $15, $16, $17, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1729,18 +1657,21 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT,
     features_to_exclude TEXT,
-    split_criterion             TEXT,
     grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
+    split_criterion             TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
     min_bucket                  INTEGER,
     n_bins                      INTEGER
 ) RETURNS VOID AS $$
+    -- verbose = false
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    $11, $12, $13, NULL::TEXT,
-                                    NULL::TEXT, FALSE::BOOLEAN,
-                                    NULL::TEXT, ''::TEXT, ''::TEXT);
+                                    $11, $12, $13, $14, $15, $16, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1751,17 +1682,20 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT,
     features_to_exclude TEXT,
-    split_criterion             TEXT,
     grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
+    split_criterion             TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER,
     min_bucket                  INTEGER
 ) RETURNS VOID AS $$
+    -- verbose = false
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    $11, $12, NULL::INTEGER, NULL::TEXT,
-                                    NULL::TEXT, FALSE::BOOLEAN,
-                                    NULL::TEXT, ''::TEXT, ''::TEXT);
+                                    $11, $12, $13, $14, $15, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1772,16 +1706,19 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT,
     features_to_exclude TEXT,
-    split_criterion             TEXT,
     grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
+    split_criterion             TEXT,
     weights                     TEXT,
     max_depth                   INTEGER,
     min_split                   INTEGER
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                                    NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-                                    NULL::TEXT, FALSE::BOOLEAN,
-                                    NULL::TEXT, ''::TEXT, ''::TEXT);
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                                    $11, $12, $13, $14, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1792,15 +1729,18 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT,
     features_to_exclude TEXT,
-    split_criterion             TEXT,
     grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
+    split_criterion             TEXT,
     weights                     TEXT,
     max_depth                   INTEGER
 ) RETURNS VOID AS $$
+    -- verbose = false
     SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                                    NULL::INTEGER, NULL::INTEGER, NULL::INTEGER,
-                                    NULL::TEXT, NULL::TEXT, FALSE::BOOLEAN,
-                                    NULL::TEXT, ''::TEXT, ''::TEXT);
+                                    $11, $12, $13, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1811,14 +1751,39 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT,
     features_to_exclude TEXT,
-    split_criterion             TEXT,
     grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
+    split_criterion             TEXT,
+    weights                     TEXT,
+    max_depth                   INTEGER
+) RETURNS VOID AS $$
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                                    $11, $12, $13, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
+    training_table_name         TEXT,
+    output_table_name           TEXT,
+    id_col_name                 TEXT,
+    dependent_variable          TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
+    grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
+    split_criterion             TEXT,
     weights                     TEXT
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9,
-                                    NULL::INTEGER, NULL::INTEGER, NULL::INTEGER,
-                                    NULL::INTEGER, NULL::TEXT, NULL::TEXT,
-                                    FALSE::BOOLEAN, NULL::TEXT, ''::TEXT, ''::TEXT);
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                                    $11, $12, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1829,29 +1794,86 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT,
     features_to_exclude TEXT,
-    split_criterion             TEXT,
-    grouping_col               TEXT
-) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8,
-        NULL::TEXT, NULL::INTEGER, NULL::INTEGER,
-        NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
-        FALSE::BOOLEAN, NULL::TEXT, ''::TEXT, ''::TEXT);
-$$ LANGUAGE SQL VOLATILE
-m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
-    training_table_name         TEXT,
-    output_table_name           TEXT,
-    id_col_name                 TEXT,
-    dependent_variable          TEXT,
-    features_to_include            TEXT,
-    features_to_exclude TEXT,
+    grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT,
     split_criterion             TEXT
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7,
-        NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER,
-        NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-        NULL::TEXT, FALSE::BOOLEAN, NULL::TEXT, ''::TEXT, ''::TEXT);
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                                    $11, NULL::TEXT, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
+    training_table_name         TEXT,
+    output_table_name           TEXT,
+    id_col_name                 TEXT,
+    dependent_variable          TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
+    grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT,
+    description                 TEXT
+) RETURNS VOID AS $$
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                                    NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
+    training_table_name         TEXT,
+    output_table_name           TEXT,
+    id_col_name                 TEXT,
+    dependent_variable          TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
+    grouping_col               TEXT,
+    model_repository_table      TEXT,
+    name                        TEXT
+) RETURNS VOID AS $$
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, $9, ''::TEXT,
+                                    NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
+    training_table_name         TEXT,
+    output_table_name           TEXT,
+    id_col_name                 TEXT,
+    dependent_variable          TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
+    grouping_col               TEXT,
+    model_repository_table      TEXT
+) RETURNS VOID AS $$
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, $8, ''::TEXT, ''::TEXT,
+                                    NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
+$$ LANGUAGE SQL VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
+    training_table_name         TEXT,
+    output_table_name           TEXT,
+    id_col_name                 TEXT,
+    dependent_variable          TEXT,
+    features_to_include            TEXT,
+    features_to_exclude TEXT,
+    grouping_col               TEXT
+) RETURNS VOID AS $$
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, $7, NULL::TEXT, ''::TEXT, ''::TEXT,
+                                    NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1863,10 +1885,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     features_to_include            TEXT,
     features_to_exclude TEXT
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6,
-        NULL::TEXT, NULL::TEXT, NULL::TEXT, NULL::INTEGER,
-        NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT,
-        NULL::TEXT, FALSE::BOOLEAN, NULL::TEXT, ''::TEXT, ''::TEXT);
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, $6, NULL::TEXT, NULL::TEXT, ''::TEXT, ''::TEXT,
+                                    NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -1877,11 +1899,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.tree_train(
     dependent_variable          TEXT,
     features_to_include            TEXT
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5,
-        NULL::TEXT, NULL::TEXT, NULL::TEXT, NULL::TEXT,
-        NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER,
-        NULL::TEXT, NULL::TEXT, FALSE::BOOLEAN,
-        NULL::TEXT, ''::TEXT, ''::TEXT);
+    -- verbose = false
+    SELECT MADLIB_SCHEMA.tree_train($1, $2, $3, $4, $5, NULL::TEXT, NULL::TEXT, NULL::TEXT, ''::TEXT, ''::TEXT,
+                                    NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::INTEGER, NULL::TEXT, NULL::TEXT,
+                                    FALSE::BOOLEAN);
 $$ LANGUAGE SQL VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 -- -------------------------------------------------------------------------

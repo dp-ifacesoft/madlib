@@ -87,17 +87,15 @@ class VersionedModelTableValidator(object):
             model_repo_table_cols = get_cols(model_repo_table)
             _assert(VersionedModelTableValidator._is_valid_versioned_table(
                 model_repo_table_cols, ModelRepoCols.MODEL_TABLE_COLS),
-                "Model repository table {0} is in the wrong format. "\
-                "Unexpected columns found : {1}.". format(
-                    model_repo_table, model_repo_table_cols))
+                "Model repository table {0} is in the wrong format.". format(
+                    model_repo_table))
 
             # Now check for model_repo_table_summary cols and types.
             model_repo_table_summary_cols = get_cols(model_repo_table_summary)
             _assert(VersionedModelTableValidator._is_valid_versioned_table(
                 model_repo_table_summary_cols, ModelRepoSummaryCols.MODEL_TABLE_SUMMARY_COLS_TYPES),
-                "Model repository summary table {0} is in the wrong format. "\
-                "Unexpected columns found: {1}.". format(
-                    model_repo_table_summary, model_repo_table_summary_cols))
+                "Model repository summary table {0} is in the wrong format.".format(
+                    model_repo_table_summary))
 
         elif model_repo_table_exists or model_repo_table_summary_exists:
             # If only one of the two tables exists, it is invalid.
