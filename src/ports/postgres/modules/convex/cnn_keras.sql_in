@@ -59,7 +59,7 @@ RETURNS VOID AS $$
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
 
-    n_classes = 10 
+    n_classes = 10
 
     def deserialize(state,model_shapes):
         weightsList = []
@@ -262,6 +262,7 @@ RETURNS VOID AS $$
     start_time = time.time()
     for i in range(N_ITERATIONS):
         iter_start_time = time.time()
+        old_weights = model.get_weights()
         try:
             model_string = plpy.execute(update_plan, [model_string])[0]['keras_model']
         except plpy.SPIError as e:
@@ -271,7 +272,15 @@ RETURNS VOID AS $$
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
         weightsList = []
         weightsList = deserialize(model_string,model_shapes)
-        model_string = "0splitter" + model_string
+
+        # Perform elastic update on master weights
+        beta = 0.9**8
+        weightsList = [one + two for one, two in zip([(1 - beta)*a for a in old_weights], [beta*a for a in weightsList])]
+        model_string = "0splitter"
+        for a in weightsList:
+            model_string += a.tostring()
+            model_string += 'splitter'
+
         model.set_weights(weightsList)
         agg_score = model.evaluate(all_x_test, all_y_test, verbose=0)[1]
         plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i+1, agg_score))
@@ -387,6 +396,9 @@ end = time.time()
 model_string = str(buffer_count+1) + 'splitter'
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
+
+# Perform elastic update on weights
+weights = [(one - two) for one, two in zip(weights, [(a - b)*0.001 for a, b in zip(weightsList, transition_deserialize(previous_state,model_shapes)[1])])]
 
 sess = K.get_session()
 K.clear_session()
