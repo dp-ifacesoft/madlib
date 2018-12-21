@@ -198,7 +198,7 @@ RETURNS VOID AS $$
     model = create_model_architecture(n_classes)
 
     sql_test_x = """
-    SELECT x, y FROM {0} LIMIT 500""".format(test_table)
+    SELECT x, y FROM {0} LIMIT 100""".format(test_table)
     plpy.info('Test sql is : {0}'.format(sql_test_x))
     testData = plpy.execute(sql_test_x)
     plpy.info('finished running select query')
@@ -251,7 +251,7 @@ RETURNS VOID AS $$
     update_plan = plpy.prepare(sql, ["bytea"])
     plpy.info("model arch is in place")
     model_string = "0splitter"
-    start_time = time.time()
+
     model_shapes = []
     for a in model.get_weights():
         model_string += a.tostring()
@@ -259,7 +259,7 @@ RETURNS VOID AS $$
         model_shapes.append(a.shape)
 
     plpy.info("Model state size: {}MB".format(len(model_string)/1024/1024))
-    start_time = time.time()
+
     for i in range(N_ITERATIONS):
         iter_start_time = time.time()
         try:
@@ -288,7 +288,6 @@ RETURNS VOID AS $$
 
 $$ language plpythonu;
 
-
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
     state               BYTEA,
     ind_var             REAL[],
@@ -301,6 +300,9 @@ $$
 
 import plpy
 import os
+import time
+
+start_transition = time.time()
 
 gpus_per_host=4
 #device_name = '/gpu:{}'.format(seg % gpus_per_host)
@@ -311,7 +313,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % gpus_per_host)
 
 import numpy as np
 import keras
-import time
 import gc
 from keras.models import Sequential
 from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadding2D, Activation
@@ -319,6 +320,11 @@ from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
 from keras import backend as K
 from tensorflow.python.client import device_lib
+
+if ind_var == None:
+   return None
+
+buffer_count = None
 
 def transition_deserialize(state,model_shapes):
     weightsList = []
@@ -331,81 +337,103 @@ def transition_deserialize(state,model_shapes):
 
     return int(split_state[0]),weightsList
 
-real_start = time.time()
-
-
-config = K.tf.ConfigProto()
-config.gpu_options.allow_growth = False 
-#  the following only lets tensorflow/keras see this specific GPU--no "with" contexts needed later
-#config.gpu_options.visible_device_list = str(seg % gpus_per_host)
-config.gpu_options.per_process_gpu_memory_fraction = 0.9
-session = K.tf.Session(config=config)
-K.set_session(session)
-
 if not state:
-    # model needs to be initialized
     serialized_state = previous_state
+    config = K.tf.ConfigProto()
+    config.gpu_options.allow_growth = False 
+    #  the following only lets tensorflow/keras see this specific GPU--no "with" contexts needed later
+    #config.gpu_options.visible_device_list = str(seg % gpus_per_host)
+    config.gpu_options.per_process_gpu_memory_fraction = 0.9
+    session = K.tf.Session(config=config)
+    K.set_session(session)
+    if 'keras_model' in SD:
+        del SD['keras_model']
+    if 'model_shapes' in SD:
+        del SD['model_shapes']
+    SD['buffer_count'] = 0
 else:
     serialized_state = state
-keras_model = model_from_json(architecture)
-model_shapes = []
 
-with K.tf.device(device_name):
-    for a in keras_model.get_weights():
-        model_shapes.append(a.shape)
+if 'buffer_count' in SD:
+    buffer_count = SD['buffer_count']
 
-start = time.time()
-buffer_count,weightsList = transition_deserialize(serialized_state,model_shapes)
-after_deser = time.time()
-with K.tf.device(device_name):
-    keras_model.set_weights(weightsList)
+#if 'segment' in SD:
+#    plpy.info("SD['segment'] = {}".format(SD['segment']))
+#plpy.info("Setting SD['segment'] = {}".format(seg))
+#SD['segment'] = seg
 
-prep_1 = time.time()  # set weights
+if 'keras_model' in SD:
+    keras_model = SD['keras_model']
+else:
+    plpy.info("Decoding model arch from json and compiling.")
+    keras_model = model_from_json(architecture)
+    SD['keras_model'] = keras_model
+    with K.tf.device(device_name):
+        keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+            loss='categorical_crossentropy', metrics=['accuracy'])
 
-# We must run model.compile again, after obtaining the architecutre.
-with K.tf.device(device_name):
-    keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-        loss='categorical_crossentropy', metrics=['accuracy'])
+if 'model_shapes' in SD:
+    model_shapes = SD['model_shapes']
+else:
+    plpy.info("Rebuilding model_shapes from get_weights.")
+    model_shapes = []
+    with K.tf.device(device_name):
+        for a in keras_model.get_weights():
+            model_shapes.append(a.shape)
+    plpy.info("model shapes size: {}".format(len(model_shapes)))
+    SD['model_shapes'] = model_shapes
 
-prep_3 = time.time() # compile()
-if ind_var == None:
-   return None
+if buffer_count is None or state is None:
+    buffer_count,weightsList = transition_deserialize(serialized_state,model_shapes)
+    with K.tf.device(device_name):
+        keras_model.set_weights(weightsList)
+
 x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
-x_train /= 255.0
+x_train /= 256
 y_train = np.array(dep_var)
-n_classes = 10 
-mid = time.time() # convert x,y input to numpy arrays
+n_classes = 10
 y_train = keras.utils.to_categorical(y_train,n_classes)
+
+start_fit = time.time()
 
 with K.tf.device(device_name):
     keras_model.fit(x_train, y_train,
        batch_size=25,
        epochs=1,
        verbose=0)
-end = time.time()
-model_string = str(buffer_count+1) + 'splitter'
+
+end_fit = time.time()
+
+buffer_count += 1
+
+model_string = str(buffer_count) + 'splitter'
+SD['buffer_count'] = buffer_count
+
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
 
-sess = K.get_session()
-K.clear_session()
-sess.close()
+if buffer == 4:
+    sess = K.get_session()
+    K.clear_session()
+    sess.close()
 
 for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
 
-del keras_model
-del weightsList
 del x_train
 del y_train
-del K
-del weights
-gc.collect()
+#del weightsList
+#del weights
+#del K
+#del keras_model
+#gc.collect()
 
-before_return = time.time()
-plpy.info("DeSer ModelArch: {0}, DeSer ModelState: {1}, Prep: {2}, Fit: {3}, Ser ModelState: {4}".format(start-real_start,after_deser-start, mid-after_deser, end-mid, before_return-end))
+end_transition = time.time()
+
+#plpy.info("DeSer ModelArch: {0}, DeSer ModelState: {1}, Prep: {2}, Fit: {3}, Ser ModelState: {4}".format(start-real_start,after_deser-start, mid-after_deser, end-mid, before_return-end))
+plpy.info("Processed buffer {}. Before {}s, Fit {}s, After {}s, Total {}s".format(buffer_count,start_fit-start_transition,end_fit-start_fit,end_transition-end_fit,end_transition-start_transition))
 
 return model_string
 
@@ -419,6 +447,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_merge(
     state2          BYTEA
 ) RETURNS BYTEA AS
 $$
+
 import numpy as np
 import time
 import gc
@@ -452,16 +481,16 @@ for a in merged_weights:
 #merge_finish = time.time()
 #plpy.info("cnn_keras_merge time = {}".format(merge_finish-merge_start))
 
-del merged_weights
-del merge_weight1
-del merge_weight2
-del weights1
-del weights2
-del total_buffers
-del split_state1
-del split_state2
+#del merged_weights
+#del merge_weight1
+#del merge_weight2
+#del weights1
+#del weights2
+#del total_buffers
+#del split_state1
+#del split_state2
 
-gc.collect()
+#gc.collect()
 
 return model_string
 $$
