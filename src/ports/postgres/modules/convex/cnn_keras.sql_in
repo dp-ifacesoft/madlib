@@ -200,6 +200,7 @@ RETURNS VOID AS $$
     sql_test_x = """
     SELECT x, y FROM {0} LIMIT 500""".format(test_table)
     plpy.info('Test sql is : {0}'.format(sql_test_x))
+    plpy.info('done')
     testData = plpy.execute(sql_test_x)
     plpy.info('finished running select query')
     after_select = time.time();
