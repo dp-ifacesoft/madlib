@@ -75,10 +75,10 @@ RETURNS VOID AS $$
         model = Sequential()
 
         # Determine proper input shape
-        input_shape = (224,224,3)
+        input_shape = (32,32,3)
         input_shape = _obtain_input_shape(input_shape,
-                                      default_size=224,
-                                      min_size=48,
+                                      default_size=32,
+                                      min_size=32,
                                       data_format=K.image_data_format(),
                                       require_flatten=True)
 
@@ -205,8 +205,8 @@ RETURNS VOID AS $$
     plpy.info('finished running select query')
     after_select = time.time();
 
-    all_x_test = np.ndarray((0,5,150528))
-    all_y_test = np.ndarray((0,5))
+    all_x_test = np.ndarray((0, 500, 32, 32, 3))
+    all_y_test = np.ndarray((0, 500))
     for i in range(len(testData)):
         x_test = np.asarray((testData[i]['x'],))
         y_test = np.asarray((testData[i]['y'],))
@@ -218,7 +218,7 @@ RETURNS VOID AS $$
         all_y_test=np.concatenate((all_y_test, y_test))
 
     num_test_examples = all_x_test.shape[0]
-    all_x_test = all_x_test.reshape(5*num_test_examples, 224,224,3)
+    all_x_test = all_x_test.reshape(5*num_test_examples, 32,32,3)
     all_x_test = all_x_test.astype('float32')
     all_y_test = all_y_test.reshape(5*num_test_examples)
     plpy.info('X shape : {0}'.format(all_x_test.shape))
@@ -270,7 +270,7 @@ RETURNS VOID AS $$
             plpy.notice(e)
             plpy.error('plpy exception')
         iter_endtime = time.time()
-        plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
+        plpy.info('Time for iteration {0}: {1}'.format(i, iter_endtime-iter_start_time))
         weightsList = deserialize(model_string, model_shapes)
 
         # Perform elastic update on master weights
@@ -283,7 +283,7 @@ RETURNS VOID AS $$
 
         model.set_weights(weightsList)
         agg_score = model.evaluate(all_x_test, all_y_test, verbose=0)[1]
-        plpy.info("Training categorical_accuracy in iteration {0} = {1}".format(i+1, agg_score))
+        plpy.info("Training categorical accuracy after iteration {0}: {1}".format(i, agg_score))
         agg_scores.append(agg_score)
 
     plan = plpy.prepare("""
@@ -379,7 +379,7 @@ with K.tf.device(device_name):
 prep_3 = time.time() # compile()
 if ind_var == None:
    return None
-x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
+x_train = np.array(ind_var).reshape(len(ind_var), 32,32,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255.0
 y_train = np.array(dep_var)
