@@ -314,16 +314,16 @@ import os
 gpus_per_host=4
 #device_name = '/gpu:{}'.format(seg % gpus_per_host)
 # device_name = '/gpu:0'
-from tensorflow.python.client import device_lib
-local_device_protos = device_lib.list_local_devices()
-gpus_avail = [x.name for x in local_device_protos if x.device_type == 'GPU']
-if not gpus_avail:
-    device_name = '/cpu:0'
-else:
-    device_name = '/gpu:0'
+# from tensorflow.python.client import device_lib
+# local_device_protos = device_lib.list_local_devices()
+# gpus_avail = [x.name for x in local_device_protos if x.device_type == 'GPU']
+# if not gpus_avail:
+#     device_name = '/cpu:0'
+# else:
+#     device_name = '/gpu:0'
 
-# Don't let tensorflow see anything but the 1 GPU we're supposed to use
-os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % gpus_per_host)
+# # Don't let tensorflow see anything but the 1 GPU we're supposed to use
+# os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % gpus_per_host)
 
 import numpy as np
 import keras
@@ -366,22 +366,22 @@ else:
 keras_model = model_from_json(architecture)
 model_shapes = []
 
-with K.tf.device(device_name):
-    for a in keras_model.get_weights():
-        model_shapes.append(a.shape)
+# with K.tf.device(device_name):
+for a in keras_model.get_weights():
+    model_shapes.append(a.shape)
 
 start = time.time()
 buffer_count,weightsList = transition_deserialize(serialized_state,model_shapes)
 after_deser = time.time()
-with K.tf.device(device_name):
-    keras_model.set_weights(weightsList)
+# with K.tf.device(device_name):
+keras_model.set_weights(weightsList)
 
 prep_1 = time.time()  # set weights
 
 # We must run model.compile again, after obtaining the architecutre.
-with K.tf.device(device_name):
-    keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
-        loss='categorical_crossentropy', metrics=['accuracy'])
+# with K.tf.device(device_name):
+keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+    loss='categorical_crossentropy', metrics=['accuracy'])
 
 prep_3 = time.time() # compile()
 if ind_var == None:
@@ -394,15 +394,15 @@ n_classes = 10
 mid = time.time() # convert x,y input to numpy arrays
 y_train = keras.utils.to_categorical(y_train,n_classes)
 
-with K.tf.device(device_name):
-    keras_model.fit(x_train, y_train,
-       batch_size=25,
-       epochs=1,
-       verbose=0)
+# with K.tf.device(device_name):
+keras_model.fit(x_train, y_train,
+   batch_size=25,
+   epochs=1,
+   verbose=0)
 end = time.time()
 model_string = str(buffer_count+1) + 'splitter'
-with K.tf.device(device_name):
-    weights = keras_model.get_weights()
+# with K.tf.device(device_name):
+weights = keras_model.get_weights()
 
 # Perform elastic update on weights
 # `weights` represents the gradient-updated weights (xi(t) - eta*grad(xi(t)))
