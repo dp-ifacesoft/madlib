@@ -270,7 +270,7 @@ RETURNS VOID AS $$
             plpy.notice(e)
             plpy.error('plpy exception')
         iter_endtime = time.time()
-        plpy.info('Time for iteration {0}: {1}'.format(i, iter_endtime-iter_start_time))
+        plpy.info('Time for iteration {0}: {1}'.format(i+1, iter_endtime-iter_start_time))
         weightsList = deserialize(model_string, model_shapes)
 
         # Perform elastic update on master weights
@@ -283,7 +283,7 @@ RETURNS VOID AS $$
 
         model.set_weights(weightsList)
         agg_score = model.evaluate(all_x_test, all_y_test, verbose=0)[1]
-        plpy.info("Training categorical accuracy after iteration {0}: {1}".format(i, agg_score))
+        plpy.info("Training categorical accuracy after iteration {0}: {1}".format(i+1, agg_score))
         agg_scores.append(agg_score)
 
     plan = plpy.prepare("""
@@ -313,7 +313,7 @@ import os
 
 gpus_per_host=4
 #device_name = '/gpu:{}'.format(seg % gpus_per_host)
-device_name = '/cpu:0'
+device_name = '/gpu:0'
 
 # Don't let tensorflow see anything but the 1 GPU we're supposed to use
 os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % gpus_per_host)
