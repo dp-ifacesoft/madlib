@@ -270,11 +270,10 @@ RETURNS VOID AS $$
             plpy.error('plpy exception')
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}:{1}'.format(i, iter_endtime-iter_start_time))
-        weightsList = []
-        weightsList = deserialize(model_string,model_shapes)
+        weightsList = deserialize(model_string, model_shapes)
 
         # Perform elastic update on master weights
-        beta = 0.9**8
+        beta = 1#0.9**8
         weightsList = [one + two for one, two in zip([(1 - beta)*a for a in old_weights], [beta*a for a in weightsList])]
         model_string = "0splitter"
         for a in weightsList:
@@ -398,7 +397,13 @@ with K.tf.device(device_name):
     weights = keras_model.get_weights()
 
 # Perform elastic update on weights
-weights = [(one - two) for one, two in zip(weights, [(a - b)*0.001 for a, b in zip(weightsList, transition_deserialize(previous_state,model_shapes)[1])])]
+# `weights` represents the gradient-updated weights (xi(t) - eta*grad(xi(t)))
+# `alpha` denotes the elastic hyperparameter that you can tune
+# `weightsList` denotes the weights of model xi(t) before training
+# `previous_state` is the serialized x_bar(t) model, the centralized model copy
+# Idea: since updates have the most effect when segment model is close to central model, we temper all updates that veer farther away
+alpha = 0.001
+weights = [(one - 0*two) for one, two in zip(weights, [(a - b)*alpha for a, b in zip(weightsList, transition_deserialize(previous_state,model_shapes)[1])])]
 
 sess = K.get_session()
 K.clear_session()
