@@ -218,9 +218,9 @@ RETURNS VOID AS $$
         all_y_test=np.concatenate((all_y_test, y_test))
 
     num_test_examples = all_x_test.shape[0]
-    all_x_test = all_x_test.reshape(5*num_test_examples, 32,32,3)
+    all_x_test = all_x_test.reshape(500*num_test_examples, 32,32,3)
     all_x_test = all_x_test.astype('float32')
-    all_y_test = all_y_test.reshape(5*num_test_examples)
+    all_y_test = all_y_test.reshape(500*num_test_examples)
     plpy.info('X shape : {0}'.format(all_x_test.shape))
     plpy.info('Y shape : {0}'.format(all_y_test.shape))
     all_x_test /= 255.0
