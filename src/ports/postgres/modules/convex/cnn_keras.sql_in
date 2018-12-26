@@ -195,7 +195,20 @@ RETURNS VOID AS $$
 
         return model
 
-    model = create_model_architecture(n_classes)
+    # model = create_model_architecture(n_classes)
+
+    model = Sequential()
+    model.add(Conv2D(32, kernel_size=(3, 3),
+        activation='relu',
+        input_shape=(32,32,3,)))
+    model.add(Conv2D(32, kernel_size=(3, 3)))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.25))
+    model.add(Flatten())
+    model.add(Dense(n_classes, activation='softmax'))
+    model.compile(loss='categorical_crossentropy',
+        optimizer=Adam(),
+        metrics=['accuracy'])
 
     sql_test_x = """
     SELECT x, y FROM {0} LIMIT 500""".format(test_table)
@@ -273,7 +286,7 @@ RETURNS VOID AS $$
         weightsList = deserialize(model_string, model_shapes)
 
         # Perform elastic update on master weights
-        beta = 0.9 #0.9**8
+        beta = 0.9 #0.9**8 #1 for regular weight avg
         weightsList = [one + two for one, two in zip([(1 - beta)*a for a in old_weights], [beta*a for a in weightsList])]
         model_string = "0splitter"
         for a in weightsList:
@@ -402,7 +415,7 @@ with K.tf.device(device_name):
 # `weightsList` denotes the weights of model xi(t) before training
 # `previous_state` is the serialized x_bar(t) model, the centralized model copy
 # Idea: since updates have the most effect when segment model is close to central model, we temper all updates that veer farther away
-alpha = 0.001
+alpha = 0.01 #0 for regular weight avg
 weights = [(one - two) for one, two in zip(weights, [(a - b)*alpha for a, b in zip(weightsList, transition_deserialize(previous_state,model_shapes)[1])])]
 
 sess = K.get_session()
