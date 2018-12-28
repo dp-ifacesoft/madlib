@@ -77,7 +77,7 @@ def _tree_validate_args(
         _assert(not table_exists(output_table_summary, only_first_schema=True),
             "A model summary table/view named {0} already exists. " \
             "Drop this table/view if you want to create a model table " \
-            "with the same name {0}.".format(output_table_summary))
+            "named {1}.".format(output_table_summary, output_table_name))
     else:
         VersionedModelTableValidator.validate_model_tables_for_train(
             output_table_name, model_repository_table)
@@ -2012,7 +2012,6 @@ def _get_display_header(table_name, dep_levels, is_regression, dot_format=True):
         return_str += "\n-------------------------------------"
     return return_str
 # ------------------------------------------------------------------------------
-
 
 def tree_display(schema_madlib, model_table, dot_format=True, verbose=False,
                  disp_surr=False, **kwargs):

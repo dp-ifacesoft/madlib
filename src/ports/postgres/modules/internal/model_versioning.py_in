@@ -64,7 +64,7 @@ class VersionedModelTableValidator(object):
                         ModelRepoSummaryCols.SUMMARY_REPO_COLS_POPULATED_BY_MODULES
                         ]
         if missing_cols:
-            plpy.error("Summary columns {} " \
+            plpy.error("Summary columns {0} " \
                        "are not assigned any value.".format(missing_cols))
 
     @staticmethod
@@ -100,21 +100,19 @@ class VersionedModelTableValidator(object):
         elif model_repo_table_exists or model_repo_table_summary_exists:
             # If only one of the two tables exists, it is invalid.
             if model_repo_table_exists:
-                error_table_name = "Model repository summary table {}".format(
-                    model_repo_table_summary)
-                plpy.error("Model repository summary table {0} does not exist," \
-                    " but model repository {1} does exist.  You must drop" \
+                error_msg = "Model repository summary table {0} does not exist," \
+                    " but model repository table {1} does exist.  You must drop" \
                     " both tables to run training.  (Or, both tables must" \
                     " exist and be in sync to run training.)".format(
-                        model_repo_table_summary, model_repo_table))
+                        model_repo_table_summary, model_repo_table)
             else:
-                error_table_name = "Model repository table {}".format(
-                    model_repo_table)
-                plpy.error("Model repository table {0} does not exist, but " \
-                    " model repository summary {1} does exist.  You must drop" \
-                    " both tables to run training.  (Or, both tables must " \
-                    "exist and be in sync to run training.)".format(
-                        model_repo_table, model_repo_table_summary))
+                error_msg = "Model repository table {0} does not exist, but " \
+                    " model repository summary table {1} does exist.  You " \
+                    "must drop both tables to run training. (Or, both tables " \
+                    "must exist and be in sync to run training.)".format(
+                        model_repo_table, model_repo_table_summary)
+
+            plpy.error(error_msg)
 
         return exists
 
@@ -139,14 +137,14 @@ class VersionedModelTableValidator(object):
                                  relkind=TABLES_ONLY),
             "A model table named {0} already exists. "\
             "Drop or rename this table if you want to create a model " \
-            "table with the same name {0}.".format(model_view))
+            "repository called {1}.".format(model_view, model_repo_table))
 
         _assert(not table_exists(model_view_summary,
                                  only_first_schema=True,
                                  relkind=TABLES_ONLY),
             "Error: A model summary table named {0} already exists. " \
             "Drop or rename this table if you want to create a model " \
-            "summary table called {0}.".format(model_view_summary))
+            "repository called {1}.".format(model_view_summary, model_repo_table))
 
         return exists
 
@@ -160,6 +158,8 @@ class VersionedModelTableValidator(object):
         # For reader, we will assume that only out_table is set.
         create_view_from_repo_table = False
         model_repo_table_summary = get_summary_tablename(model_repo_table)
+
+        # TODO: rename those variables since the names are confusing now
         model_table = model_repo_table
         model_table_summary = model_repo_table_summary
 
@@ -197,9 +197,9 @@ class VersionedModelTableValidator(object):
             # Assert that tables/views named out_table and out_table_summary
             # exist.
             _assert(table_exists(model_table),
-                "Model table/view {} does not exist.".format(model_table))
+                "Model table/view {0} does not exist.".format(model_table))
             _assert(table_exists(model_table_summary),
-                "Model summary table/view {} does not exist.".format(
+                "Model summary table/view {0} does not exist.".format(
                     model_table_summary))
 
         return create_view_from_repo_table
@@ -679,7 +679,7 @@ class VersionedModelWriter(object):
         if is_platform_pg():
             distributed_by_clause = ''
         else:
-            distributed_by_clause= 'DISTRIBUTED BY ({})'.format(
+            distributed_by_clause= 'DISTRIBUTED BY ({0})'.format(
                 ModelRepoSummaryCols.MODEL_ID_COLNAME)
         model_table_cols = ', '.join(['{0} {1}'.format(colname, coltype)
                     for colname, coltype in

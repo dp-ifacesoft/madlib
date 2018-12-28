@@ -710,6 +710,10 @@ SELECT tree_train('mt_cars',         -- source table
 SELECT assert(max_model_id = 1 , 'Max model_id should have been 1.')
 FROM (SELECT max(model_id) AS max_model_id FROM train_repo) s;
 
+-- test tree_display for model versioning for regression
+select tree_display('train_view', FALSE);
+SELECT tree_surr_display('train_view');
+
 -- predict using the view.
 DROP TABLE IF EXISTS predict_output;
 SELECT tree_predict('train_view', 'mt_cars', 'predict_output');
@@ -735,6 +739,10 @@ SELECT tree_train('dt_golf',         -- source table
                    NULL
                    );
 
+-- test tree_display for model versioning for classification
+select tree_display('train_view', FALSE);
+SELECT tree_surr_display('train_view');
+
 -- assert cols in summary table
 SELECT assert
 (
@@ -742,7 +750,7 @@ SELECT assert
     start_training_time         < now() AND
     end_training_time           > start_training_time  AND
     source_table                = 'dt_golf' AND
-    output_model                = 'train_view' AND
+    model                       = 'train_view' AND
     model_repository            = 'train_repo' AND
     dependent_varname           = 'class' AND
     independent_varname         = $${"\"OUTLOOK\"", temperature}$$ AND
