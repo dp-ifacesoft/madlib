@@ -45,6 +45,7 @@ RETURNS VOID AS $$
     import os
     import sys
     import gc
+    import random
 
     from keras.models import Sequential
     from keras.datasets import mnist, cifar10
@@ -55,158 +56,45 @@ RETURNS VOID AS $$
     from keras.layers import Input
     from keras.applications.imagenet_utils import _obtain_input_shape
     from keras.models import Model
-    from keras.models import model_from_json
+    from keras.models import model_from_json, clone_model
+    from keras.callbacks import EarlyStopping
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
 
     n_classes = 10
 
-    def deserialize(state,model_shapes):
+    def deserialize(state, model_shapes):
         weightsList = []
         j = 0
-        for a in filter(None,state.split('splitter')):
+        for a in filter(None, state.split('splitter')[1:]):
             arr = np.fromstring(a, dtype=np.float32)
             weightsList.append(arr.reshape(model_shapes[j]))
-            j+=1
-
+            j += 1
         return weightsList
 
-    def create_model_architecture(n_classes,config='A'):
-        model = Sequential()
+    def deserialize_modelagg(state):
+        model_list = state.split('modelsplitarvind')
+        return model_list
 
-        # Determine proper input shape
-        input_shape = (32,32,3)
-        input_shape = _obtain_input_shape(input_shape,
-                                      default_size=32,
-                                      min_size=32,
-                                      data_format=K.image_data_format(),
-                                      require_flatten=True)
-
-        inputs = Input(shape=input_shape)
-
-        # Block 1
-        x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block1_conv1')(inputs)
-
-        if (config != 'A'):
-            x = Conv2D(filters=64, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block1_conv2')(x)
-
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block1_pool", padding='valid')(x)
-
-        # Block 2
-        x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block2_conv1')(x)
-
-        if (config != 'A'):
-            x = Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block2_conv2')(x)
-
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block2_pool", padding='valid')(x)
-
-        # Block 3
-        x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block3_conv1')(x)
-
-        x = Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block3_conv2')(x)
-
-        if (config != 'A' and config != 'B'):
-            if config == 'C':
-                ks = 1 
+    def serialized_modelagg(model_list):
+        model_list_serialized = ""
+        for model in model_list:
+            if model_list_serialized:
+                model_list_serialized += ("modelsplitarvind" + model)
             else:
-                ks = 3
-                x = Conv2D(filters=256, kernel_size=ks, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block3_conv3')(x)
+                model_list_serialized += model
+        return model_list_serialized
 
-        if (config == 'E'):
-            x = Conv2D(filters=256, kernel_size=ks, strides=(1, 1), padding='same',
-                kernel_regularizer=l2(0.0002),
-                activation='relu', name='block3_conv3')(x)
-   
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block3_pool", padding='valid')(x)
-
-        # Block 4
-        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block4_conv1')(x)
-
-        x = Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same',
-                   kernel_regularizer=l2(0.0002),
-                   activation='relu', name='block4_conv2')(x)
-
-        if (config != 'A' and config != 'B'):
-            if config == 'C':
-                ks = 1 
-            else:
-                ks = 3
-            x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
-                       kernel_regularizer=l2(0.0002),
-                       activation='relu', name='block4_conv3')(x)
-
-            if config == 'E':
-                x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
-                       kernel_regularizer=l2(0.0002),
-                       activation='relu', name='block4_conv3')(x)
-
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block4_pool", padding='valid')(x)
-
-        # Block 5
-
-        if (config != 'A' and config != 'B'):
-            if config == 'C':
-                ks = 1 
-            else:
-                ks = 3
-            x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
-                       kernel_regularizer=l2(0.0002),
-                       activation='relu', name='block4_conv3')(x)
-
-            if config == 'E':
-                x = Conv2D(filters=512, kernel_size=ks, strides=(1, 1), padding='same',
-                       kernel_regularizer=l2(0.0002),
-                       activation='relu', name='block4_conv3')(x)
-
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name="block5_pool", padding='valid')(x)
-
-        # Classification block
-        x = Flatten(name='flatten')(x)
-        x = Dense(4096, activation='relu', name='fc1')(x)
-        x = Dropout(0.5, name='drop_fc1')(x)
-
-        x = Dense(4096, activation='relu', name='fc2')(x)
-        x = Dropout(0.5, name='drop_fc2')(x)
-
-        x = Dense(n_classes, activation='softmax', name="predictions")(x)
-
-        model = Model(inputs, x, name='vgg16-places365')
-
-        sgd = SGD(lr=0.01, decay=1e-6, nesterov=True)
-        model.summary()
-
-        model.compile(optimizer=sgd, loss='categorical_crossentropy', metrics=['accuracy'])
-
-        return model
-
-    # model = create_model_architecture(n_classes)
-
-    model = Sequential()
-    model.add(Conv2D(32, kernel_size=(3, 3),
+    master_model = Sequential()
+    master_model.add(Conv2D(32, kernel_size=(3, 3),
         activation='relu',
         input_shape=(32,32,3,)))
-    model.add(Conv2D(32, kernel_size=(3, 3)))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.25))
-    model.add(Flatten())
-    model.add(Dense(n_classes, activation='softmax'))
-    model.compile(loss='categorical_crossentropy',
+    master_model.add(Conv2D(32, kernel_size=(3, 3)))
+    master_model.add(MaxPooling2D(pool_size=(2, 2)))
+    master_model.add(Dropout(0.25))
+    master_model.add(Flatten())
+    master_model.add(Dense(n_classes, activation='softmax'))
+    master_model.compile(loss='categorical_crossentropy',
         optimizer=Adam(),
         metrics=['accuracy'])
 
@@ -239,15 +127,14 @@ RETURNS VOID AS $$
     all_y_test = keras.utils.to_categorical(all_y_test,n_classes)
 
     eval_start = time.time()
-    plpy.info("Time to prepare test data = {}".format(eval_start - after_select));
-
-    agg_score = model.evaluate(all_x_test, all_y_test,verbose=0)[1]
+    plpy.info("Time to prepare test data = {}".format(eval_start - after_select))
+    agg_score = master_model.evaluate(all_x_test, all_y_test,verbose=0)[1]
     eval_time = time.time()
     plpy.info("Time to evaluate model = {0}".format(eval_time-eval_start))
     plpy.info("Accuracy before any training = {0}".format(agg_score))
 
     agg_scores = []
-    model_arch = model.to_json()
+    model_arch = master_model.to_json()
     sql = """
         SELECT MADLIB_SCHEMA.cnn_keras_step(
             x::REAL[],
@@ -258,45 +145,84 @@ RETURNS VOID AS $$
         ) AS keras_model
         FROM {1}
         """.format(model_arch, source_table)
-
     plpy.info("Model arch size: {}KB".format(len(model_arch)/1024))
-
     update_plan = plpy.prepare(sql, ["bytea"])
     plpy.info("model arch is in place")
-    model_string = "0splitter"
-    start_time = time.time()
-    model_shapes = []
-    for a in model.get_weights():
-        model_string += a.tostring()
-        model_string += 'splitter'
-        model_shapes.append(a.shape)
 
-    plpy.info("Model state size: {}MB".format(len(model_string)/1024/1024))
+    model_list_serialized = ""
+    model_shapes = []
+    for i in range(20): # 20 = num segments
+        model_string = "0splitter"
+        start_time = time.time()
+        for a in master_model.get_weights():
+            model_string += a.tostring()
+            model_string += 'splitter'
+            if i == 0:
+                model_shapes.append(a.shape)
+        if i != 0:
+            model_string = "modelsplitarvind" + model_string
+        model_list_serialized += model_string
+    plpy.info("Model state size: {}MB".format(len(model_list_serialized)/1024/1024))
+
     start_time = time.time()
     for i in range(N_ITERATIONS):
         iter_start_time = time.time()
-        old_weights = model.get_weights()
         try:
-            model_string = plpy.execute(update_plan, [model_string])[0]['keras_model']
+            model_list_serialized = plpy.execute(update_plan, [model_list_serialized])[0]['keras_model']
         except plpy.SPIError as e:
             plpy.notice(e)
             plpy.error('plpy exception')
         iter_endtime = time.time()
         plpy.info('Time for iteration {0}: {1}'.format(i+1, iter_endtime-iter_start_time))
-        weightsList = deserialize(model_string, model_shapes)
 
-        # Perform elastic update on master weights
-        beta = 1 #0.9**8 #1 for regular weight avg
-        weightsList = [one + two for one, two in zip([(1 - beta)*a for a in old_weights], [beta*a for a in weightsList])]
-        model_string = "0splitter"
-        for a in weightsList:
-            model_string += a.tostring()
-            model_string += 'splitter'
+        # Shuffle the model ensemble for next iteration
+        model_list = deserialize_modelagg(model_list_serialized)
+        weightsList = deserialize(model_list[0], model_shapes)
+        random.shuffle(model_list)
+        model_list_serialized = serialized_modelagg(model_list)
 
-        model.set_weights(weightsList)
-        agg_score = model.evaluate(all_x_test, all_y_test, verbose=0)[1]
+        # Evaluate the first model
+        master_model.set_weights(weightsList)
+        agg_score = master_model.evaluate(all_x_test, all_y_test, verbose=0)[1]
         plpy.info("Training categorical accuracy after iteration {0}: {1}".format(i+1, agg_score))
         agg_scores.append(agg_score)
+
+    # Construct, train, test the ensemble
+    conv_start = time.time()
+    model_list = deserialize_modelagg(model_list_serialized)
+    ensemble = []
+    for model in model_list:
+        weightsList = deserialize(model, model_shapes)
+        seg_model = clone_model(master_model)
+        seg_model.set_weights(weightsList)
+        ensemble.append(seg_model)
+    ensemble_preds = []
+    for model in ensemble:
+        prediction = model.predict(all_x_test, verbose=0).T
+        ensemble_preds.append(prediction)
+    ensemble_preds = np.array(ensemble_preds).T.reshape((all_x_test.shape[0], 20, n_classes, 1))
+    conv_ensemble_model = Sequential()
+    conv_ensemble_model.add(Conv2D(64, kernel_size=(3, 3),
+        activation='relu',
+        input_shape=(20, n_classes, 1,)))
+    conv_ensemble_model.add(Conv2D(64, (3, 3), activation='relu'))
+    conv_ensemble_model.add(MaxPooling2D(pool_size=(2, 2)))
+    conv_ensemble_model.add(Dropout(0.2))
+    conv_ensemble_model.add(Flatten())
+    conv_ensemble_model.add(Dense(128, activation='relu'))
+    conv_ensemble_model.add(Dropout(0.2))
+    conv_ensemble_model.add(Dense(n_classes, activation='softmax'))
+    conv_ensemble_model.compile(loss='categorical_crossentropy',
+        optimizer=Adam(),
+        metrics=['accuracy'])
+    history = conv_ensemble_model.fit(ensemble_preds, all_y_test,
+        batch_size=25,
+        epochs=60,
+        verbose=0,
+        callbacks=[EarlyStopping(monitor='loss', patience=10, verbose=0)])
+    score = conv_ensemble_model.evaluate(ensemble_preds, all_y_test)
+    plpy.info("Time for ensemble iteration: {0}".format(time.time() - conv_start))
+    plpy.info("Convolutional ensemble train accuracy iteration: {0}".format(score[1]))
 
     plan = plpy.prepare("""
         drop table if exists {0};
@@ -341,20 +267,37 @@ from keras.models import model_from_json
 from keras import backend as K
 from tensorflow.python.client import device_lib
 
-def transition_deserialize(state,model_shapes):
+def transition_deserialize(state, model_shapes):
     weightsList = []
     j = 0
-    split_state = filter(None,state.split('splitter'))
+    split_state = filter(None, state.split('splitter'))
     for a in split_state[1:]:
         arr = np.fromstring(a, dtype=np.float32)
         weightsList.append(arr.reshape(model_shapes[j]))
-        j+=1
+        j += 1
+    return weightsList
 
-    return int(split_state[0]),weightsList
+def transition_deserialize_modelagg(model_list, model_shapes):
+    weightsList = []
+    j = 0
+    state = model_list.split("modelsplitarvind")[seg]
+    split_state = filter(None, state.split('splitter'))
+    for a in split_state[1:]:
+        arr = np.fromstring(a, dtype=np.float32)
+        weightsList.append(arr.reshape(model_shapes[j]))
+        j += 1
+    return weightsList
+
+def transition_serialize_modelagg(model_list):
+    model_list_serialized = ""
+    for model in model_list:
+        if model_list_serialized:
+            model_list_serialized += ("modelsplitarvind" + model)
+        else:
+            model_list_serialized += model
+    return model_list_serialized
 
 real_start = time.time()
-
-
 config = K.tf.ConfigProto()
 config.gpu_options.allow_growth = False 
 #  the following only lets tensorflow/keras see this specific GPU--no "with" contexts needed later
@@ -363,20 +306,21 @@ config.gpu_options.per_process_gpu_memory_fraction = 0.9
 session = K.tf.Session(config=config)
 K.set_session(session)
 
-if not state:
-    # model needs to be initialized
-    serialized_state = previous_state
-else:
-    serialized_state = state
 keras_model = model_from_json(architecture)
 model_shapes = []
-
 with K.tf.device(device_name):
     for a in keras_model.get_weights():
         model_shapes.append(a.shape)
 
 start = time.time()
-buffer_count,weightsList = transition_deserialize(serialized_state,model_shapes)
+if not state:
+    # model needs to be initialized
+    serialized_state = previous_state
+    weightsList = transition_deserialize_modelagg(serialized_state, model_shapes)
+else:
+    serialized_state = state
+    weightsList = transition_deserialize(serialized_state, model_shapes)
+
 after_deser = time.time()
 with K.tf.device(device_name):
     keras_model.set_weights(weightsList)
@@ -390,7 +334,7 @@ with K.tf.device(device_name):
 
 prep_3 = time.time() # compile()
 if ind_var == None:
-   return None
+    return None
 x_train = np.array(ind_var).reshape(len(ind_var), 32,32,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255.0
@@ -405,26 +349,22 @@ with K.tf.device(device_name):
        epochs=1,
        verbose=0)
 end = time.time()
-model_string = str(buffer_count+1) + 'splitter'
+
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
-
-# Perform elastic update on weights
-# `weights` represents the gradient-updated weights (xi(t) - eta*grad(xi(t)))
-# `alpha` denotes the elastic hyperparameter that you can tune
-# `weightsList` denotes the weights of model xi(t) before training
-# `previous_state` is the serialized x_bar(t) model, the centralized model copy
-# Idea: since updates have the most effect when segment model is close to central model, we temper all updates that veer farther away
-alpha = 0 #0 for regular weight avg
-weights = [(one - two) for one, two in zip(weights, [(a - b)*alpha for a, b in zip(weightsList, transition_deserialize(previous_state,model_shapes)[1])])]
-
 sess = K.get_session()
 K.clear_session()
 sess.close()
 
+model_string = '0splitter'
 for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
+
+# # Serialize into the ensemble again
+# model_list = serialized_state.split("modelsplitarvind")
+# model_list[seg] = model_string
+# model_list_serialized = transition_serialize_modelagg(model_list)
 
 del keras_model
 del weightsList
@@ -451,48 +391,11 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_merge(
 $$
 import numpy as np
 import time
-import gc
 #import plpy
-
 #merge_start = time.time()
-
 if not state1 or not state2:
-#    plpy.info("Returning from merge early","(only 1 state passed)")
     return state1 or state2
-
-split_state1 = filter(None,state1.split('splitter'))
-split_state2 = filter(None,state2.split('splitter'))
-
-buffer_count1 = int(state1[0])
-buffer_count2 = int(state2[0])
-
-weights1 = [np.fromstring(a,dtype='float32') for a in split_state1[1:]]
-weights2 = [np.fromstring(a,dtype='float32') for a in split_state2[1:]]
-
-total_buffers = (buffer_count1 + buffer_count2) * 1.0
-merge_weight1 = buffer_count1 / total_buffers
-merge_weight2 = buffer_count2 / total_buffers
-
-merged_weights = [(merge_weight1*a)+(merge_weight2*b) for a, b in zip(weights1, weights2)]
-model_string = str(total_buffers) + 'splitter'
-for a in merged_weights:
-    model_string += a.tostring()
-    model_string += "splitter"
-
-#merge_finish = time.time()
-#plpy.info("cnn_keras_merge time = {}".format(merge_finish-merge_start))
-
-del merged_weights
-del merge_weight1
-del merge_weight2
-del weights1
-del weights2
-del total_buffers
-del split_state1
-del split_state2
-
-gc.collect()
-
+model_string = state1 + "modelsplitarvind" + state2
 return model_string
 $$
 LANGUAGE plpythonu
@@ -504,15 +407,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_final(
 $$
 import numpy as np
 import gc
-
-weights = [np.fromstring(a,dtype='float32') for a in filter(None,state.split('splitter')[1:])]
-model_string = ''
-for a in weights:
-    model_string += a.tostring()
-    model_string += "splitter"
-del weights
 gc.collect()
-return model_string
+return state
 $$
 LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
