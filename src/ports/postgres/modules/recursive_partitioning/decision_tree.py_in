@@ -76,7 +76,7 @@ def _tree_validate_args(
         output_table_summary = add_postfix(output_table_name, "_summary")
         _assert(not table_exists(output_table_summary, only_first_schema=True),
             "A model summary table/view named {0} already exists. " \
-            "Drop this view if you want to create a model table " \
+            "Drop this table/view if you want to create a model table " \
             "with the same name {0}.".format(output_table_summary))
     else:
         VersionedModelTableValidator.validate_model_tables_for_train(
@@ -954,9 +954,8 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         ('id_col_name', id_col_name),
         ('cat_features', cat_features),
         ('con_features', con_features),
+        ('num_all_groups', num_all_groups),
         ('num_failed_groups', num_failed_groups),
-        ('features_to_include', features_to_include),
-        ('features_to_exclude', features_to_exclude),
         ('total_rows_processed', total_rows_processed),
         ('total_rows_skipped', total_rows_skipped),
         ('dependent_var_levels', dependent_var_levels),
@@ -965,8 +964,9 @@ def _create_versioned_output_tables(schema_madlib, training_table_name,
         ('input_cp', input_cp),
         ('n_folds', n_folds),
         ('null_proxy', null_proxy),
-        ('num_all_groups', num_all_groups),
-        ('method', method)
+        ('method', method), # this will be removed later
+        ('features_to_include', features_to_include),
+        ('features_to_exclude', features_to_exclude)
     ])
     # Update values of non-JSON columns in summary repo table.
     summary_cols = {
@@ -2024,7 +2024,7 @@ def tree_display(schema_madlib, model_table, dot_format=True, verbose=False,
     summary = plpy.execute("SELECT * FROM {summary_table}".
                            format(summary_table=summary_table))[0]
     dep_levels = summary["dependent_var_levels"]
-    dep_levels = [''] if not dep_levels else split_quoted_delimited_str(dep_levels)
+    dep_levels = [''] if not dep_levels else dep_levels
     table_name = summary["source_table"]
     is_regression = not summary["is_classification"]
     cat_features_str = summary['cat_features']

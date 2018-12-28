@@ -102,11 +102,19 @@ class VersionedModelTableValidator(object):
             if model_repo_table_exists:
                 error_table_name = "Model repository summary table {}".format(
                     model_repo_table_summary)
+                plpy.error("Model repository summary table {0} does not exist," \
+                    " but model repository {1} does exist.  You must drop" \
+                    " both tables to run training.  (Or, both tables must" \
+                    " exist and be in sync to run training.)".format(
+                        model_repo_table_summary, model_repo_table))
             else:
                 error_table_name = "Model repository table {}".format(
                     model_repo_table)
-
-            plpy.error("{0} does not exist.".format(error_table_name))
+                plpy.error("Model repository table {0} does not exist, but " \
+                    " model repository summary {1} does exist.  You must drop" \
+                    " both tables to run training.  (Or, both tables must " \
+                    "exist and be in sync to run training.)".format(
+                        model_repo_table, model_repo_table_summary))
 
         return exists
 
@@ -131,14 +139,14 @@ class VersionedModelTableValidator(object):
                                  relkind=TABLES_ONLY),
             "A model table named {0} already exists. "\
             "Drop or rename this table if you want to create a model " \
-            "repository table with the same name {0}.".format(model_view))
+            "table with the same name {0}.".format(model_view))
 
         _assert(not table_exists(model_view_summary,
                                  only_first_schema=True,
                                  relkind=TABLES_ONLY),
             "Error: A model summary table named {0} already exists. " \
             "Drop or rename this table if you want to create a model " \
-            "repository called {0}.".format(model_repo_table_summary))
+            "summary table called {0}.".format(model_view_summary))
 
         return exists
 
@@ -795,7 +803,7 @@ class VersionedModelWriter(object):
                     {start_training_time},
                     {end_training_time},
                     {source_table},
-                    {output_model},
+                    {model},
                     {model_repository},
                     {dependent_varname},
                     {independent_varname},
