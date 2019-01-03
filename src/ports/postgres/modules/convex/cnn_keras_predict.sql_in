@@ -1,0 +1,315 @@
+/* ----------------------------------------------------------------------- *//**
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ *
+ * @file mlp.sql_in
+ *
+ * @brief SQL functions for multilayer perceptron
+ * @date June 2012
+ *
+ *
+ *//* ----------------------------------------------------------------------- */
+
+m4_include(`SQLCommon.m4')
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.run_keras_predict(
+    source_table text,
+    dest_table text,
+    model_table text,
+    num_classes  int
+) RETURNS VOID AS $$
+
+    n_classes = num_classes
+
+    import plpy
+    import keras
+    import numpy as np
+    import pandas as pd
+    import time
+    import os
+    import sys
+    import gc
+    from keras.models import Sequential
+    from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadding2D, Activation, BatchNormalization
+    from keras.optimizers import Adam, SGD
+    from keras import backend as K
+    from keras.regularizers import l2
+    from keras.layers import Input
+    from keras.models import Model
+    from keras.models import model_from_json
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # (to disable GPU)
+
+    def serialize_weights(model):
+        model_string, model_shapes = "", ""
+        for a in model.get_weights():
+            model_string += a.tostring()
+            model_string += 'splitter'
+            model_shapes += str(a.shape)
+            model_shapes += 'splitter'
+        return model_string, model_shapes
+
+    def deserialize_weights(state, model_shapes):
+        weightsList, j = [], 0
+        for a in filter(None, state.split('splitter')):
+            arr = np.fromstring(a, dtype=np.float32)
+            weightsList.append(arr.reshape(model_shapes[j]))
+            j += 1
+        return weightsList
+
+    # Get the model weights
+    get_model_weights = "SELECT keras_model_weights from {0}".format(model_table)
+    model_weights = list(plpy.execute(get_model_weights)[0]['keras_model_weights'])
+
+    # Get the model architecture
+    get_model_arch = "SELECT keras_model_arch from {0}".format(model_table)
+    model_arch = plpy.execute(get_model_arch)[0]['keras_model_arch']
+
+    # Create and compile the model
+    master_model = model_from_json(model_arch)
+    master_model.set_weights(model_weights)
+    master_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True), loss='categorical_crossentropy', metrics=['accuracy'])
+
+    # SQL to conduct distributed evaluation
+    serialized_weights, model_shapes = serialize_weights(master_model)
+    sql = """
+        SELECT MADLIB_SCHEMA.keras_predict_step(
+            x::REAL[],
+            gp_segment_id,
+            $MAD${0}$MAD$::text,
+            $MAD${1}$MAD$::text,
+            $MAD${2}$MAD$::text,
+            $MAD${3}$MAD$::text,
+            $1
+        ) AS predictions
+        FROM {4}
+        """.format(model_arch, serialized_weights, model_shapes, dest_table, source_table)
+    update_plan = plpy.prepare(sql, ["bytea"])
+
+    # Prepare the destination table
+    # start_tblwrite = time.time()
+    plan = plpy.prepare("""
+        DROP TABLE IF EXISTS {0};
+        CREATE TABLE {0} AS
+        SELECT $1 AS x, $2 AS y
+        """.format(dest_table), ["REAL[]", "SMALLINT[]"])
+    plpy.execute(plan, [None, None])
+    # end_tblwrite = time.time()
+
+    # Run distributed evaluation
+    start_eval = time.time()
+    try:
+        model_results = plpy.execute(update_plan, "")[0]['predictions']
+    except plpy.SPIError as e:
+        plpy.notice(e)
+        plpy.error('plpy exception')
+    end_eval = time.time()
+
+    # Deserialize results
+    # TODO
+
+    # Print times
+    plpy.info("Time taken to perform prediction: {0} sec".format(end_eval-start_eval))
+    # plpy.info("Time taken to write to table: {0} sec".format(end_tblwrite-start_tblwrite))
+    plpy.info("Results written to table {0}".format(dest_table))
+
+$$ LANGUAGE plpythonu;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.keras_predict_transition(
+    state               BYTEA,
+    ind_var             REAL[],
+    seg                 INTEGER,
+    architecture        TEXT,
+    weights             TEXT,
+    shapes              TEXT,
+    dest_table          TEXT,
+    previous_state      BYTEA
+) RETURNS BYTEA AS $$
+
+    import plpy
+    import os
+    import time
+    import numpy as np
+    import keras
+    import gc
+    from keras.models import Sequential
+    from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, ZeroPadding2D, Activation
+    from keras.optimizers import Adam, SGD
+    from keras.models import model_from_json
+    from keras import backend as K
+    from tensorflow.python.client import device_lib
+
+    def serialize_weights(model):
+        model_string, model_shapes = "", ""
+        for a in model.get_weights():
+            model_string += a.tostring()
+            model_string += 'splitter'
+            model_shapes += str(a.shape)
+            model_shapes += 'splitter'
+        return model_string, model_shapes
+
+    def deserialize_weights(state, model_shapes):
+        weightsList, j = [], 0
+        for a in filter(None, state.split('splitter')):
+            arr = np.fromstring(a, dtype=np.float32)
+            weightsList.append(arr.reshape(model_shapes[j]))
+            j += 1
+        return weightsList
+
+    if ind_var == None:
+       return None
+    start_transition = time.time()
+
+    # GPU configuration
+    gpus_per_host=4
+    device_name = '/gpu:0'
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(seg % gpus_per_host)
+
+    # Initialize state
+    if not state:
+        serialized_state = previous_state
+        config = K.tf.ConfigProto()
+        config.gpu_options.allow_growth = False
+        config.gpu_options.per_process_gpu_memory_fraction = 0.9
+        session = K.tf.Session(config=config)
+        K.set_session(session)
+        if 'keras_model' in SD:
+            del SD['keras_model']
+        if 'model_shapes' in SD:
+            del SD['model_shapes']
+        SD['buffer_count'] = 0
+    else:
+        serialized_state = state
+
+    # Set buffer count
+    if 'buffer_count' in SD:
+        buffer_count = SD['buffer_count']
+    else: # check/TODO
+        buffer_count = 0
+        SD['buffer_count'] = 0
+
+    # Get model shapes
+    if 'model_shapes' in SD:
+        model_shapes = SD['model_shapes']
+    else:
+        model_shapes = []
+        for a in filter(None, shapes.split('splitter')):
+            model_shapes.append(eval(a))
+        plpy.info("Model shapes size: {}".format(len(model_shapes)))
+        SD['model_shapes'] = model_shapes
+
+    # Build and compile model
+    if 'keras_model' in SD:
+        keras_model = SD['keras_model']
+    else:
+        keras_model = model_from_json(architecture)
+        keras_model.set_weights(deserialize_weights(weights, model_shapes))
+        SD['keras_model'] = keras_model
+        with K.tf.device(device_name):
+            keras_model.compile(optimizer=SGD(lr=0.01, decay=1e-6, nesterov=True),
+                loss='categorical_crossentropy', metrics=['accuracy'])
+
+    # Format input data
+    x_train = np.array(ind_var).reshape(len(ind_var), 224, 224, 3)
+    x_train /= 256 # should this be 255
+
+    # Perform prediction
+    start_predict = time.time()
+    with K.tf.device(device_name):
+        prediction = keras_model.predict(x_train)
+    end_predict = time.time()
+
+    # Compute the state to return
+    # TODO: put prediction in right format (argmax over the elements)
+    start_tblwrite = time.time()
+    plan = plpy.prepare("""
+        INSERT INTO {0} (x, y)
+        VALUES ($1, $2)
+        """.format(dest_table), ["REAL[]", "SMALLINT[]"])
+    plpy.execute(plan, [ind_var, prediction])
+    end_tblwrite = time.time()
+    # state_update = ""
+    # state_update += x_train.tostring()
+    # state_update += "xyresultsonleftright"
+    # state_update += prediction.tostring()
+    # state_update += "splitter"
+    # state_return = serialized_state + state_update
+
+    # Update the buffer count
+    buffer_count += 1
+    SD['buffer_count'] = buffer_count
+
+    # Close session if on last buffer
+    total_buffers = 185 # TODO: update
+    if buffer_count == total_buffers:
+        sess = K.get_session()
+        K.clear_session()
+        sess.close()
+    del x_train
+    end_transition = time.time()
+
+    # Print times and return
+    plpy.info("Predict time: {0} sec. Table write: {1} sec. Total: {2} sec.".format(end_predict - start_predict, 
+        end_tblwrite - start_tblwrite, end_transition - start_transition))
+    return "state"
+    # return state_return
+
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.keras_predict_merge(
+    state1          BYTEA,
+    state2          BYTEA
+) RETURNS BYTEA AS $$
+
+return state1 or state2
+
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.keras_predict_final(
+    state           BYTEA
+) RETURNS BYTEA AS $$
+
+return state
+
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.keras_predict_step(REAL[],
+                                                      INTEGER,
+                                                      TEXT,
+                                                      TEXT,
+                                                      TEXT,
+                                                      TEXT,
+                                                      BYTEA);
+CREATE AGGREGATE MADLIB_SCHEMA.keras_predict_step(
+    /* ind_var */             REAL[],
+    /* seg */                 INTEGER,
+    /* architecture */        TEXT,
+    /* weights */             TEXT,
+    /* shapes */              TEXT,
+    /* dest_table */          TEXT,
+    /* previous_state */      BYTEA
+)(
+    STYPE=BYTEA,
+    SFUNC=MADLIB_SCHEMA.keras_predict_transition,
+    PREFUNC=MADLIB_SCHEMA.keras_predict_merge,
+    FINALFUNC=MADLIB_SCHEMA.keras_predict_final
+);
