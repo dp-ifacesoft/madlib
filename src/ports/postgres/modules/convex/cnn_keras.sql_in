@@ -32,7 +32,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.run_keras(
     source_table text,
     test_table text,
     model_table text,
-    n_iter  int
+    n_iter  int,
+    n_classes int
 )
 RETURNS VOID AS $$
     N_ITERATIONS = n_iter
@@ -54,12 +55,11 @@ RETURNS VOID AS $$
     from keras.regularizers import l2
     from keras.layers import Input
     from keras.applications.imagenet_utils import _obtain_input_shape
+    from keras.layers.normalization import BatchNormalization
     from keras.models import Model
     from keras.models import model_from_json
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
-
-    n_classes = 50
 
     def deserialize(state,model_shapes):
         weightsList = []
@@ -71,7 +71,7 @@ RETURNS VOID AS $$
 
         return weightsList
 
-    def create_model_architecture(n_classes,config='A'):
+    def create_model_architecture_vgg(n_classes,config='A'):
         model = Sequential()
 
         # Determine proper input shape
@@ -195,7 +195,7 @@ RETURNS VOID AS $$
 
         return model
 
-    model = create_model_architecture(n_classes)
+    model = create_model_architecture_vgg(n_classes)
 
     sql_test_x = """
     SELECT x, y FROM {0} LIMIT 100""".format(test_table)
@@ -233,6 +233,9 @@ RETURNS VOID AS $$
     plpy.info("Time to evaluate model = {0}".format(eval_time-eval_start))
     plpy.info("Accuracy before any training = {0}".format(agg_score))
 
+    total_buffers_per_seg = plpy.execute('select gp_segment_id, count(*) as total_buffers_per_seg from {0} group by gp_segment_id order by gp_segment_id'.format(source_table))
+    total_buffers_per_seg = [int(total_buffers_per_seg[i]["total_buffers_per_seg"]) for i in range(len(total_buffers_per_seg))]
+
     agg_scores = []
     model_arch = model.to_json()
     sql = """
@@ -240,11 +243,13 @@ RETURNS VOID AS $$
             x::REAL[],
             y::SMALLINT[],
             gp_segment_id,
-            $MAD${0}$MAD$::text,
+            {0},
+            ARRAY{1},
+            $MAD${2}$MAD$::text,
             $1
         ) AS keras_model
-        FROM {1}
-        """.format(model_arch, source_table)
+        FROM {3}
+        """.format(n_classes, total_buffers_per_seg, model_arch, source_table)
 
     plpy.info("Model arch size: {}KB".format(len(model_arch)/1024))
 
@@ -289,12 +294,14 @@ RETURNS VOID AS $$
 $$ language plpythonu;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
-    state               BYTEA,
-    ind_var             REAL[],
-    dep_var             SMALLINT[],
-    seg                 INTEGER,
-    architecture        TEXT,
-    previous_state      BYTEA
+    state                      BYTEA,
+    ind_var                    REAL[],
+    dep_var                    SMALLINT[],
+    seg                        INTEGER,
+    n_classes                  INTEGER,
+    total_buffers_per_seg      INTEGER[],
+    architecture               TEXT,
+    previous_state             BYTEA
 ) RETURNS BYTEA AS
 $$
 
@@ -390,19 +397,16 @@ if buffer_count is None or state is None:
 
 x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
-x_train /= 256
+x_train /= 255 # should this be 255
 y_train = np.array(dep_var)
-n_classes = 50
+#n_classes = 50
 y_train = keras.utils.to_categorical(y_train,n_classes)
 
 start_fit = time.time()
 
 with K.tf.device(device_name):
-    keras_model.fit(x_train, y_train,
-       batch_size=25,
-       epochs=1,
-       verbose=0)
-
+    history = keras_model.fit(x_train, y_train, batch_size=25, epochs=1, verbose=0)
+    plpy.info('loss:{} accuracy:{} for segment model'.format(history.history['loss'], history.history['acc']))
 end_fit = time.time()
 
 buffer_count += 1
@@ -413,10 +417,14 @@ SD['buffer_count'] = buffer_count
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
 
-if buffer == 4:
+total_buffers = total_buffers_per_seg[seg]
+start_closing_session = time.time()
+if buffer_count == total_buffers:
     sess = K.get_session()
     K.clear_session()
     sess.close()
+
+end_closing_session = time.time()
 
 for a in weights:
     model_string += a.tostring()
@@ -427,8 +435,7 @@ del y_train
 
 end_transition = time.time()
 
-#plpy.info("DeSer ModelArch: {0}, DeSer ModelState: {1}, Prep: {2}, Fit: {3}, Ser ModelState: {4}".format(start-real_start,after_deser-start, mid-after_deser, end-mid, before_return-end))
-plpy.info("Processed buffer {}. Before {}s, Fit {}s, After {}s, Total {}s".format(buffer_count,start_fit-start_transition,end_fit-start_fit,end_transition-end_fit,end_transition-start_transition))
+plpy.info("Processed buffer {}. Before {}s, Fit {}s, After {}s, Close session {}s, Total {}s".format(buffer_count,start_fit-start_transition,end_fit-start_fit,end_transition-end_fit,end_closing_session - start_closing_session, end_transition-start_transition))
 
 return model_string
 
@@ -514,14 +521,18 @@ m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(REAL[],
                                                       SMALLINT[],
                                                       INTEGER,
+                                                      INTEGER,
+                                                      INTEGER[],
                                                       TEXT,
                                                       BYTEA);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
-    /* ind_var */             REAL[],
-    /* dep_var */             SMALLINT[],
-    /* seg */                 INTEGER,
-    /* architecture */        TEXT,
-    /* previous_state */      BYTEA
+    /* ind_var */              REAL[],
+    /* dep_var */              SMALLINT[],
+    /* seg */                  INTEGER,
+    /* n_classes */            INTEGER,
+    /* total_buffers_per_seg*/ INTEGER[],
+    /* architecture */         TEXT,
+    /* previous_state */       BYTEA
 )(
     STYPE=BYTEA,
     SFUNC=MADLIB_SCHEMA.cnn_keras_transition,
