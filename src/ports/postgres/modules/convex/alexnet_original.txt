@@ -1,0 +1,96 @@
+    def create_model_architecture_alexnet(n_classes, config='A'): #alexnet
+        model = Sequential()
+
+        # 1st Convolutional Layer
+        model.add(Conv2D(filters=96, input_shape=(224,224,3), kernel_size=(11,11),\
+                 strides=(4,4), padding='valid'))
+        model.add(Activation('relu'))
+        # Pooling
+        model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid'))
+        # Batch Normalisation before passing it to the next layer
+        model.add(BatchNormalization())
+
+        # 2nd Convolutional Layer
+        model.add(Conv2D(filters=256, kernel_size=(11,11), strides=(1,1), padding='valid'))
+        model.add(Activation('relu'))
+        # Pooling
+        model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid'))
+        # Batch Normalisation
+        model.add(BatchNormalization())
+
+        # 3rd Convolutional Layer
+        model.add(Conv2D(filters=384, kernel_size=(3,3), strides=(1,1), padding='valid'))
+        model.add(Activation('relu'))
+        # Batch Normalisation
+        model.add(BatchNormalization())
+
+        # 4th Convolutional Layer
+        model.add(Conv2D(filters=384, kernel_size=(3,3), strides=(1,1), padding='valid'))
+        model.add(Activation('relu'))
+        # Batch Normalisation
+        model.add(BatchNormalization())
+
+        # 5th Convolutional Layer
+        model.add(Conv2D(filters=256, kernel_size=(3,3), strides=(1,1), padding='valid'))
+        model.add(Activation('relu'))
+        # Pooling
+        model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid'))
+        # Batch Normalisation
+        model.add(BatchNormalization())
+
+        # Passing it to a dense layer
+        model.add(Flatten())
+        # 1st Dense Layer
+        model.add(Dense(4096, input_shape=(224*224*3,)))
+        model.add(Activation('relu'))
+        # Add Dropout to prevent overfitting
+        model.add(Dropout(0.4))
+        # Batch Normalisation
+        model.add(BatchNormalization())
+
+        # 2nd Dense Layer
+        model.add(Dense(4096))
+        model.add(Activation('relu'))
+        # Add Dropout
+        model.add(Dropout(0.4))
+        # Batch Normalisation
+        model.add(BatchNormalization())
+
+        # 3rd Dense Layer
+        model.add(Dense(1000))
+        model.add(Activation('relu'))
+        # Add Dropout
+        model.add(Dropout(0.4))
+        # Batch Normalisation
+        model.add(BatchNormalization())
+
+        # Output Layer
+        model.add(Dense(n_classes))
+        model.add(Activation('softmax'))
+
+        model.summary()
+
+        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+        return model
+
+
+conv_ensemble_model = Sequential()
+conv_ensemble_model.add(Conv2D(32, kernel_size=(3, 3),
+    activation='relu',
+    input_shape=(20, n_classes, 1,)))
+conv_ensemble_model.add(Conv2D(32, (3, 3), activation='relu'))
+conv_ensemble_model.add(MaxPooling2D(pool_size=(2, 2)))
+conv_ensemble_model.add(Dropout(0.55))
+conv_ensemble_model.add(Flatten())
+conv_ensemble_model.add(Dense(64, activation='relu'))
+conv_ensemble_model.add(Dropout(0.55))
+conv_ensemble_model.add(Dense(n_classes, activation='softmax'))
+conv_ensemble_model.compile(loss='categorical_crossentropy',
+    optimizer=Adam(),
+    metrics=['accuracy'])
+history = conv_ensemble_model.fit(ensemble_preds_train, y_train_ensemble,
+    batch_size=15,
+    epochs=50,
+    verbose=1,
+    validation_data=(ensemble_preds_test, y_test_ensemble),
+    callbacks=[EarlyStopping(monitor='loss', patience=10, verbose=0)])
