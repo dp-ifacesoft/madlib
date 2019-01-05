@@ -234,6 +234,7 @@ RETURNS VOID AS $$
     plpy.info("Accuracy before any training = {0}".format(agg_score))
 
     total_buffers_per_seg = plpy.execute('select gp_segment_id, count(*) as total_buffers_per_seg from {0} group by gp_segment_id order by gp_segment_id'.format(source_table))
+    seg_nos = [int(total_buffers_per_seg[i]["gp_segment_id"]) for i in range(len(total_buffers_per_seg))]
     total_buffers_per_seg = [int(total_buffers_per_seg[i]["total_buffers_per_seg"]) for i in range(len(total_buffers_per_seg))]
 
     agg_scores = []
@@ -245,11 +246,12 @@ RETURNS VOID AS $$
             gp_segment_id,
             {0},
             ARRAY{1},
-            $MAD${2}$MAD$::text,
+            ARRAY{2},
+            $MAD${3}$MAD$::text,
             $1
         ) AS keras_model
-        FROM {3}
-        """.format(n_classes, total_buffers_per_seg, model_arch, source_table)
+        FROM {4}
+        """.format(n_classes, seg_nos, total_buffers_per_seg, model_arch, source_table)
 
     plpy.info("Model arch size: {}KB".format(len(model_arch)/1024))
 
@@ -299,6 +301,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
     dep_var                    SMALLINT[],
     seg                        INTEGER,
     n_classes                  INTEGER,
+    all_seg_ids                INTEGER[],
     total_buffers_per_seg      INTEGER[],
     architecture               TEXT,
     previous_state             BYTEA
@@ -399,43 +402,53 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255 # should this be 255
 y_train = np.array(dep_var)
-#n_classes = 50
+n_classes = 50
 y_train = keras.utils.to_categorical(y_train,n_classes)
 
 start_fit = time.time()
 
 with K.tf.device(device_name):
     history = keras_model.fit(x_train, y_train, batch_size=25, epochs=1, verbose=0)
-    plpy.info('loss:{} accuracy:{} for segment model'.format(history.history['loss'], history.history['acc']))
+    #plpy.info('loss:{} accuracy:{} for segment model'.format(history.history['loss'], history.history['acc']))
 end_fit = time.time()
 
 buffer_count += 1
 
+str_buffer_start = time.time()
 model_string = str(buffer_count) + 'splitter'
-SD['buffer_count'] = buffer_count
+str_buffer_end = time.time()
 
+save_buffer_cnt_to_sd_start = time.time()
+SD['buffer_count'] = buffer_count
+save_buffer_cnt_to_sd_end = time.time()
+
+get_weights_start = time.time()
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
+get_weights_end = time.time()
 
-total_buffers = total_buffers_per_seg[seg]
-start_closing_session = time.time()
+close_session_start = time.time()
+seg_idx = [i for i, seg_id in enumerate(all_seg_ids) if seg_id == seg][0]
+total_buffers = total_buffers_per_seg[seg_idx]
 if buffer_count == total_buffers:
     sess = K.get_session()
     K.clear_session()
     sess.close()
+close_session_end = time.time()
 
-end_closing_session = time.time()
-
+serialize_weights_start = time.time()
 for a in weights:
     model_string += a.tostring()
     model_string += "splitter"
+serialize_weights_end = time.time()
 
 del x_train
 del y_train
 
 end_transition = time.time()
 
-plpy.info("Processed buffer {}. Before {}s, Fit {}s, After {}s, Close session {}s, Total {}s".format(buffer_count,start_fit-start_transition,end_fit-start_fit,end_transition-end_fit,end_closing_session - start_closing_session, end_transition-start_transition))
+plpy.info("Processed buffer {}. Before {}s, Fit {}s, After {}s, Total {}s".format(buffer_count,start_fit-start_transition,end_fit-start_fit,end_transition-end_fit, end_transition-start_transition))
+plpy.info("DEBUG buffer {}: str buffer {}s, save buffer to sd {}s, get weights {}s, close_session {}s, serialize weights {}s".format(buffer_count, str_buffer_end-str_buffer_start, save_buffer_cnt_to_sd_end-save_buffer_cnt_to_sd_start, get_weights_end-get_weights_start, close_session_end-close_session_start, serialize_weights_end-serialize_weights_start))
 
 return model_string
 
@@ -523,6 +536,7 @@ DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(REAL[],
                                                       INTEGER,
                                                       INTEGER,
                                                       INTEGER[],
+                                                      INTEGER[],
                                                       TEXT,
                                                       BYTEA);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
@@ -530,6 +544,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
     /* dep_var */              SMALLINT[],
     /* seg */                  INTEGER,
     /* n_classes */            INTEGER,
+    /* all_seg_ids*/           INTEGER[],
     /* total_buffers_per_seg*/ INTEGER[],
     /* architecture */         TEXT,
     /* previous_state */       BYTEA
