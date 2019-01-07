@@ -1,0 +1,5 @@
+Places 365 one iteration, with more equal test data distribution
+
+INFO:  Time for iteration 1: 1119.3889842
+INFO:  Training categorical accuracy after iteration 1: 0.013
+

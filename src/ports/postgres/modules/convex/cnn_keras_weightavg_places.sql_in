@@ -272,7 +272,7 @@ RETURNS VOID AS $$
     model = alexnet_construct(n_classes)
 
     sql_test_x = """
-    SELECT x, y FROM {0} LIMIT 100""".format(test_table)
+    SELECT x, y FROM {0} ORDER BY random() LIMIT 200""".format(test_table)
     plpy.info('Test sql is : {0}'.format(sql_test_x))
     testData = plpy.execute(sql_test_x)
     plpy.info('finished running select query')
@@ -283,8 +283,8 @@ RETURNS VOID AS $$
     for i in range(len(testData)):
         x_test = np.asarray((testData[i]['x'],))
         y_test = np.asarray((testData[i]['y'],))
-        if i < 2:
-            plpy.info('i : {0}'.format(i))
+        plpy.info('i : {0}'.format(i))
+        if i == 0:
             plpy.info('X shape : {0}'.format(x_test.shape))
             plpy.info('Y shape : {0}'.format(y_test.shape))
         all_x_test=np.concatenate((all_x_test, x_test))

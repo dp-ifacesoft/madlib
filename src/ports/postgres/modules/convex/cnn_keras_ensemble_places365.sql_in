@@ -262,6 +262,7 @@ RETURNS VOID AS $$
     np.random.shuffle(all_x_test)
     np.random.set_state(rng_state)
     np.random.shuffle(all_y_test)
+    plpy.info(np.argmax(all_y_test[1:100], axis=1))
     # Split test dataset into ensemble train and test sets
     split = int(0.7*all_x_test.shape[0])
     x_train_ensemble = all_x_test[0:split]
@@ -279,7 +280,7 @@ RETURNS VOID AS $$
         seg_model = clone_model(master_model)
         seg_model.set_weights(weightsList)
         ensemble.append(seg_model)
-    plpy.info("Time for ensemble construction: {}".format(time.time - conv_start))
+    plpy.info("Time for ensemble construction: {} sec".format(time.time() - conv_start))
     # Get predictions from ensemble models
     ensemble_preds_train = get_ensemble_preds(ensemble, x_train_ensemble)
     ensemble_preds_test = get_ensemble_preds(ensemble, x_test_ensemble)

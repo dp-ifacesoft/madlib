@@ -274,7 +274,7 @@ RETURNS VOID AS $$
         seg_model = clone_model(master_model)
         seg_model.set_weights(weightsList)
         ensemble.append(seg_model)
-    plpy.info("Time for ensemble construction: {}".format(time.time - conv_start))
+    plpy.info("Time for ensemble construction: {} sec".format(time.time() - conv_start))
     # Get predictions from ensemble models
     ensemble_preds_train = get_ensemble_preds(ensemble, x_train_ensemble)
     ensemble_preds_test = get_ensemble_preds(ensemble, x_test_ensemble)
