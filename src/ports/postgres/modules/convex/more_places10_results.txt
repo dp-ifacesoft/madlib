@@ -1,0 +1,71 @@
+INFO:  Time for iteration 1: 88.492372036
+INFO:  Training categorical accuracy after iteration 1: 0.065
+INFO:  Time for ensemble iteration: 998.236868143
+INFO:  Convolutional ensemble train accuracy iteration: 0.429047619104
+INFO:  Convolutional ensemble test accuracy iteration: 0.347777777778
+
+INFO:  Time for iteration 1: 82.2373580933
+INFO:  Training categorical accuracy after iteration 1: 0.0840000000298
+INFO:  Time for ensemble iteration: 217.808943033
+INFO:  Convolutional ensemble train accuracy iteration: 0.480000002044
+INFO:  Convolutional ensemble test accuracy iteration: 0.220000001589
+
+INFO:  Time for iteration 1: 81.704226017
+INFO:  Training categorical accuracy after iteration 1: 0.034
+INFO:  Time for ensemble iteration: 372.792176008
+INFO:  Convolutional ensemble train accuracy iteration: 0.507142857313
+INFO:  Convolutional ensemble test accuracy iteration: 0.293333333532
+
+INFO:  Time for iteration 1: 81.9892280102
+INFO:  Training categorical accuracy after iteration 1: 0.081
+INFO:  Time for iteration 2: 69.1127541065
+INFO:  Training categorical accuracy after iteration 2: 0.201
+INFO:  Time for iteration 3: 72.4878931046
+INFO:  Training categorical accuracy after iteration 3: 0.299
+INFO:  Time for iteration 4: 75.8050148487
+INFO:  Training categorical accuracy after iteration 4: 0.354
+INFO:  Time for iteration 5: 70.7555010319
+INFO:  Training categorical accuracy after iteration 5: 0.351
+INFO:  Time for iteration 6: 73.2070531845
+INFO:  Training categorical accuracy after iteration 6: 0.35
+INFO:  Time for iteration 7: 70.135666132
+INFO:  Training categorical accuracy after iteration 7: 0.375
+INFO:  Time for iteration 8: 73.4636330605
+INFO:  Training categorical accuracy after iteration 8: 0.385
+INFO:  Time for iteration 9: 70.9734730721
+INFO:  Training categorical accuracy after iteration 9: 0.436
+INFO:  Time for iteration 10: 74.2522289753
+INFO:  Training categorical accuracy after iteration 10: 0.431
+INFO:  Time for ensemble iteration: 376.086957932
+INFO:  Convolutional ensemble train accuracy iteration: 0.697142856121
+INFO:  Convolutional ensemble test accuracy iteration: 0.519999999205
+
+INFO:  Time for iteration 1: 84.6095850468
+INFO:  Training categorical accuracy after iteration 1: 0.156666666687
+INFO:  Time for ensemble iteration: 182.427947998
+INFO:  Convolutional ensemble train accuracy iteration: 0.647142856802
+INFO:  Convolutional ensemble test accuracy iteration: 0.266666666667
+
+INFO:  Time for iteration 1: 85.021173954
+INFO:  Training categorical accuracy after iteration 1: 0.211333333373
+INFO:  Time for ensemble iteration: 244.636118889
+INFO:  Convolutional ensemble train accuracy iteration: 0.560952380839
+INFO:  Convolutional ensemble test accuracy iteration: 0.302222222222
+
+INFO:  Time for iteration 1: 80.3496749401
+INFO:  Training categorical accuracy after iteration 1: 0.167333333373
+INFO:  Time for ensemble iteration: 244.93765378
+INFO:  Convolutional ensemble train accuracy iteration: 0.601904762586
+INFO:  Convolutional ensemble test accuracy iteration: 0.28
+
+INFO:  Time for iteration 1: 84.810642004
+INFO:  Training categorical accuracy after iteration 1: 0.154
+INFO:  Time for ensemble iteration: 245.586677074
+INFO:  Convolutional ensemble train accuracy iteration: 0.575238095011
+INFO:  Convolutional ensemble test accuracy iteration: 0.311111111111
+
+INFO:  Time for iteration 1: 80.0370349884
+INFO:  Training categorical accuracy after iteration 1: 0.160000000119
+INFO:  Time for ensemble iteration: 244.186494112
+INFO:  Convolutional ensemble train accuracy iteration: 0.558095238663
+INFO:  Convolutional ensemble test accuracy iteration: 0.335555555556

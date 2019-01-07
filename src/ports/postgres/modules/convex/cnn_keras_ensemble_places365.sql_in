@@ -59,9 +59,9 @@ RETURNS VOID AS $$
     from keras.models import model_from_json, clone_model
     from keras.callbacks import EarlyStopping
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '-1' # disable GPU ()
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
 
-    n_classes = 10
+    n_classes = 365
 
     def deserialize(state, model_shapes):
         weightsList = []
@@ -162,14 +162,14 @@ RETURNS VOID AS $$
     master_model = alexnet_construct(n_classes)
 
     sql_test_x = """
-    SELECT x, y FROM {0} LIMIT 3""".format(test_table)
+    SELECT x, y FROM {0} ORDER BY random() LIMIT 200""".format(test_table)
     plpy.info('Test sql is : {0}'.format(sql_test_x))
     testData = plpy.execute(sql_test_x)
     plpy.info('finished running select query')
     after_select = time.time();
 
-    all_x_test = np.ndarray((0, 500, 150528))
-    all_y_test = np.ndarray((0, 500))
+    all_x_test = np.ndarray((0, 5, 150528))
+    all_y_test = np.ndarray((0, 5))
     for i in range(len(testData)):
         x_test = np.asarray((testData[i]['x'],))
         y_test = np.asarray((testData[i]['y'],))
@@ -181,9 +181,9 @@ RETURNS VOID AS $$
         all_y_test=np.concatenate((all_y_test, y_test))
 
     num_test_examples = all_x_test.shape[0]
-    all_x_test = all_x_test.reshape(500*num_test_examples, 224, 224, 3)
+    all_x_test = all_x_test.reshape(5*num_test_examples, 224, 224, 3)
     all_x_test = all_x_test.astype('float32')
-    all_y_test = all_y_test.reshape(500*num_test_examples)
+    all_y_test = all_y_test.reshape(5*num_test_examples)
     plpy.info('X shape : {0}'.format(all_x_test.shape))
     plpy.info('Y shape : {0}'.format(all_y_test.shape))
     all_x_test /= 255.0
@@ -257,6 +257,11 @@ RETURNS VOID AS $$
             prediction = model.predict(x_input, verbose=1).T
             ensemble_preds.append(prediction)
         return np.array(ensemble_preds).T.reshape((x_input.shape[0], 20, n_classes, 1))
+    # Shuffle the test dataset
+    rng_state = np.random.get_state()
+    np.random.shuffle(all_x_test)
+    np.random.set_state(rng_state)
+    np.random.shuffle(all_y_test)
     # Split test dataset into ensemble train and test sets
     split = int(0.7*all_x_test.shape[0])
     x_train_ensemble = all_x_test[0:split]
@@ -280,14 +285,14 @@ RETURNS VOID AS $$
     ensemble_preds_test = get_ensemble_preds(ensemble, x_test_ensemble)
     # Construct and train the ensemble model
     conv_ensemble_model = Sequential()
-    conv_ensemble_model.add(Conv2D(32, kernel_size=(3, 3),
+    conv_ensemble_model.add(Conv2D(256, kernel_size=(3, 3),
         activation='relu',
         input_shape=(20, n_classes, 1,)))
-    conv_ensemble_model.add(Conv2D(32, (3, 3), activation='relu'))
+    conv_ensemble_model.add(Conv2D(256, (3, 3), activation='relu'))
     conv_ensemble_model.add(MaxPooling2D(pool_size=(2, 2)))
     conv_ensemble_model.add(Dropout(0.55))
     conv_ensemble_model.add(Flatten())
-    conv_ensemble_model.add(Dense(64, activation='relu'))
+    conv_ensemble_model.add(Dense(512, activation='relu'))
     conv_ensemble_model.add(Dropout(0.55))
     conv_ensemble_model.add(Dense(n_classes, activation='softmax'))
     conv_ensemble_model.compile(loss='categorical_crossentropy',
@@ -429,7 +434,7 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224, 224, 3)
 x_train /= 256 # should this be 255
 y_train = np.array(dep_var)
 plpy.info("Max label on segment {} on buffer {}: {}".format(buffer_count+1, seg, max(y_train)))
-n_classes = 10
+n_classes = 365
 y_train = keras.utils.to_categorical(y_train, n_classes)
 
 start_fit = time.time()
@@ -442,20 +447,7 @@ end_fit = time.time()
 
 buffer_count += 1
 SD['buffer_count'] = buffer_count
-if seg == 9:
-    total_buffers = 1
-elif seg in [0, 12, 14, 19]:
-    total_buffers = 2
-elif seg == 13:
-    total_buffers = 4
-elif seg in [5, 3, 8, 6]:
-    total_buffers = 5
-elif seg in [1, 17, 10, 15, 18, 2, 7]:
-    total_buffers = 6
-elif seg in [4, 16]:
-    total_buffers = 7
-elif seg == 11:
-    total_buffers = 8
+total_buffers=185
 
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
