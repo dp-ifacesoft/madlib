@@ -402,7 +402,7 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224,224,3)
 # Figure out why this is necessary, but IT IS necessary!
 x_train /= 255 # should this be 255
 y_train = np.array(dep_var)
-n_classes = 50
+#n_classes = 50
 y_train = keras.utils.to_categorical(y_train,n_classes)
 
 start_fit = time.time()
