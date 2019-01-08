@@ -198,7 +198,7 @@ RETURNS VOID AS $$
     model = create_model_architecture_vgg(n_classes)
 
     sql_test_x = """
-    SELECT x, y FROM {0} LIMIT 100""".format(test_table)
+    SELECT x, y FROM {0} ORDER BY random() LIMIT 200""".format(test_table)
     plpy.info('Test sql is : {0}'.format(sql_test_x))
     testData = plpy.execute(sql_test_x)
     plpy.info('finished running select query')
