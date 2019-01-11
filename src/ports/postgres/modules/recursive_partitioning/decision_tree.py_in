@@ -70,14 +70,14 @@ def _tree_validate_args(
     if not model_repository_table:
         _assert(not table_exists(output_table_name, only_first_schema=True),
             "A table/view named {0} already exists." \
-            "Drop this table/view if you want to create a model table with " \
-            "the same name {0}.".format(output_table_name))
+            "You need to drop or rename this table/view.".format(
+                output_table_name))
 
         output_table_summary = add_postfix(output_table_name, "_summary")
         _assert(not table_exists(output_table_summary, only_first_schema=True),
             "A model summary table/view named {0} already exists. " \
-            "Drop this table/view if you want to create a model table " \
-            "named {1}.".format(output_table_summary, output_table_name))
+            "You need to drop or rename this table/view.".format(
+                output_table_summary))
     else:
         VersionedModelTableValidator.validate_model_tables_for_train(
             output_table_name, model_repository_table)

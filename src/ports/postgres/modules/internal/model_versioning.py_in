@@ -100,14 +100,15 @@ class VersionedModelTableValidator(object):
         elif model_repo_table_exists or model_repo_table_summary_exists:
             # If only one of the two tables exists, it is invalid.
             if model_repo_table_exists:
-                error_msg = "Model repository summary table {0} does not exist," \
-                    " but model repository table {1} does exist.  You must drop" \
+                error_msg = "Model repository table {0} exists," \
+                    " but model repository summary table {1} does not" \
+                    " exist.  You must drop" \
                     " both tables to run training.  (Or, both tables must" \
                     " exist and be in sync to run training.)".format(
-                        model_repo_table_summary, model_repo_table)
+                        model_repo_table, model_repo_table_summary)
             else:
                 error_msg = "Model repository table {0} does not exist, but " \
-                    " model repository summary table {1} does exist.  You " \
+                    "model repository summary table {1} does exist.  You " \
                     "must drop both tables to run training. (Or, both tables " \
                     "must exist and be in sync to run training.)".format(
                         model_repo_table, model_repo_table_summary)
@@ -136,15 +137,13 @@ class VersionedModelTableValidator(object):
                                  only_first_schema=True,
                                  relkind=TABLES_ONLY),
             "A model table named {0} already exists. "\
-            "Drop or rename this table if you want to create a model " \
-            "repository called {1}.".format(model_view, model_repo_table))
+            "Drop or rename this table.".format(model_view))
 
         _assert(not table_exists(model_view_summary,
                                  only_first_schema=True,
                                  relkind=TABLES_ONLY),
             "Error: A model summary table named {0} already exists. " \
-            "Drop or rename this table if you want to create a model " \
-            "repository called {1}.".format(model_view_summary, model_repo_table))
+            "Drop or rename this table.".format(model_view_summary))
 
         return exists
 
