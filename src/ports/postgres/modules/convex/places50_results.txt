@@ -1,0 +1,10 @@
+INFO:  Time for iteration 1: 215.232626915
+INFO:  Training categorical accuracy after iteration 1: 0.021
+INFO:  Time for iteration 2: 204.061017036
+INFO:  Training categorical accuracy after iteration 2: 0.017
+INFO:  Time for iteration 3: 200.301845074
+INFO:  Training categorical accuracy after iteration 3: 0.02
+INFO:  Time for ensemble iteration: 253.957235813
+INFO:  Convolutional ensemble train accuracy iteration: 0.0342857142857
+INFO:  Convolutional ensemble test accuracy iteration: 0.0266666666667
+

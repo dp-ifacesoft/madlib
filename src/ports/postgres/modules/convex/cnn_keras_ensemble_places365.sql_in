@@ -61,7 +61,7 @@ RETURNS VOID AS $$
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # to disable GPU
 
-    n_classes = 365
+    n_classes = 50
 
     def deserialize(state, model_shapes):
         weightsList = []
@@ -89,7 +89,7 @@ RETURNS VOID AS $$
         model = Sequential()
 
         # 1st Convolutional Layer
-        model.add(Conv2D(filters=96, input_shape=(224,224,3), kernel_size=(11,11),\
+        model.add(Conv2D(filters=100, input_shape=(224,224,3), kernel_size=(11,11),\
                  strides=(4,4), padding='valid'))
         model.add(Activation('relu'))
         # Pooling
@@ -98,7 +98,7 @@ RETURNS VOID AS $$
         model.add(BatchNormalization())
 
         # 2nd Convolutional Layer
-        model.add(Conv2D(filters=128, kernel_size=(11,11), strides=(1,1), padding='valid'))
+        model.add(Conv2D(filters=140, kernel_size=(11,11), strides=(1,1), padding='valid'))
         model.add(Activation('relu'))
         # Pooling
         model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid'))
@@ -106,19 +106,19 @@ RETURNS VOID AS $$
         model.add(BatchNormalization())
 
         # 3rd Convolutional Layer
-        model.add(Conv2D(filters=128, kernel_size=(3,3), strides=(1,1), padding='valid'))
+        model.add(Conv2D(filters=140, kernel_size=(3,3), strides=(1,1), padding='valid'))
         model.add(Activation('relu'))
         # Batch Normalisation
         model.add(BatchNormalization())
 
         # 4th Convolutional Layer
-        model.add(Conv2D(filters=128, kernel_size=(3,3), strides=(1,1), padding='valid'))
+        model.add(Conv2D(filters=130, kernel_size=(3,3), strides=(1,1), padding='valid'))
         model.add(Activation('relu'))
         # Batch Normalisation
         model.add(BatchNormalization())
 
         # 5th Convolutional Layer
-        model.add(Conv2D(filters=128, kernel_size=(3,3), strides=(1,1), padding='valid'))
+        model.add(Conv2D(filters=130, kernel_size=(3,3), strides=(1,1), padding='valid'))
         model.add(Activation('relu'))
         # Pooling
         model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2), padding='valid'))
@@ -128,26 +128,26 @@ RETURNS VOID AS $$
         # Passing it to a dense layer
         model.add(Flatten())
         # 1st Dense Layer
-        model.add(Dense(2048, input_shape=(224*224*3,)))
+        model.add(Dense(2750, input_shape=(224*224*3,)))
         model.add(Activation('relu'))
         # Add Dropout to prevent overfitting
-        model.add(Dropout(0.4))
+        model.add(Dropout(0.3))
         # Batch Normalisation
         model.add(BatchNormalization())
 
         # 2nd Dense Layer
-        model.add(Dense(2048))
+        model.add(Dense(2750))
         model.add(Activation('relu'))
         # Add Dropout
-        model.add(Dropout(0.4))
+        model.add(Dropout(0.3))
         # Batch Normalisation
         model.add(BatchNormalization())
 
         # 3rd Dense Layer
-        model.add(Dense(500))
+        model.add(Dense(1000))
         model.add(Activation('relu'))
         # Add Dropout
-        model.add(Dropout(0.4))
+        model.add(Dropout(0.3))
         # Batch Normalisation
         model.add(BatchNormalization())
 
@@ -196,6 +196,10 @@ RETURNS VOID AS $$
     plpy.info("Time to evaluate model = {0}".format(eval_time-eval_start))
     plpy.info("Accuracy before any training = {0}".format(agg_score))
 
+    total_buffers_per_seg = plpy.execute('select gp_segment_id, count(*) as total_buffers_per_seg from {0} group by gp_segment_id order by gp_segment_id'.format(source_table))
+    seg_nums = [int(total_buffers_per_seg[i]["gp_segment_id"]) for i in range(len(total_buffers_per_seg))]
+    total_buffers_per_seg = [int(total_buffers_per_seg[i]["total_buffers_per_seg"]) for i in range(len(total_buffers_per_seg))]
+
     agg_scores = []
     model_arch = master_model.to_json()
     sql = """
@@ -203,11 +207,13 @@ RETURNS VOID AS $$
             x::REAL[],
             y::SMALLINT[],
             gp_segment_id,
-            $MAD${0}$MAD$::text,
+            ARRAY{0},
+            ARRAY{1},
+            $MAD${2}$MAD$::text,
             $1
         ) AS keras_model
-        FROM {1}
-        """.format(model_arch, source_table)
+        FROM {3}
+        """.format(seg_nums, total_buffers_per_seg, model_arch, source_table)
     plpy.info("Model arch size: {}KB".format(len(model_arch)/1024))
     update_plan = plpy.prepare(sql, ["bytea"])
     plpy.info("model arch is in place")
@@ -286,14 +292,14 @@ RETURNS VOID AS $$
     ensemble_preds_test = get_ensemble_preds(ensemble, x_test_ensemble)
     # Construct and train the ensemble model
     conv_ensemble_model = Sequential()
-    conv_ensemble_model.add(Conv2D(256, kernel_size=(3, 3),
+    conv_ensemble_model.add(Conv2D(128, kernel_size=(3, 3),
         activation='relu',
         input_shape=(20, n_classes, 1,)))
-    conv_ensemble_model.add(Conv2D(256, (3, 3), activation='relu'))
+    conv_ensemble_model.add(Conv2D(128, (3, 3), activation='relu'))
     conv_ensemble_model.add(MaxPooling2D(pool_size=(2, 2)))
     conv_ensemble_model.add(Dropout(0.55))
     conv_ensemble_model.add(Flatten())
-    conv_ensemble_model.add(Dense(512, activation='relu'))
+    conv_ensemble_model.add(Dense(256, activation='relu'))
     conv_ensemble_model.add(Dropout(0.55))
     conv_ensemble_model.add(Dense(n_classes, activation='softmax'))
     conv_ensemble_model.compile(loss='categorical_crossentropy',
@@ -324,12 +330,14 @@ $$ language plpythonu;
 
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cnn_keras_transition(
-    state               BYTEA,
-    ind_var             REAL[],
-    dep_var             SMALLINT[],
-    seg                 INTEGER,
-    architecture        TEXT,
-    previous_state      BYTEA
+    state                     BYTEA,
+    ind_var                   REAL[],
+    dep_var                   SMALLINT[],
+    seg                       INTEGER,
+    all_seg_ids               INTEGER[],
+    total_buffers_per_seg     INTEGER[],
+    architecture              TEXT,
+    previous_state            BYTEA
 ) RETURNS BYTEA AS
 $$
 
@@ -435,7 +443,7 @@ x_train = np.array(ind_var).reshape(len(ind_var), 224, 224, 3)
 x_train /= 256 # should this be 255
 y_train = np.array(dep_var)
 plpy.info("Max label on segment {} on buffer {}: {}".format(buffer_count+1, seg, max(y_train)))
-n_classes = 365
+n_classes = 50
 y_train = keras.utils.to_categorical(y_train, n_classes)
 
 start_fit = time.time()
@@ -448,21 +456,25 @@ end_fit = time.time()
 
 buffer_count += 1
 SD['buffer_count'] = buffer_count
-total_buffers=185
+
+seg_idx = [i for i, seg_id in enumerate(all_seg_ids) if seg_id == seg][0]
+total_buffers = total_buffers_per_seg[seg_idx]
 
 with K.tf.device(device_name):
     weights = keras_model.get_weights()
 model_string = str(buffer_count) + 'splitter'
-for a in weights:
-    model_string += a.tostring()
-    model_string += "splitter"
 
 start_closing_session = time.time()
 if buffer_count == total_buffers:
+    model_string = '0splitter'
     sess = K.get_session()
     K.clear_session()
     sess.close()
 end_closing_session = time.time()
+
+for a in weights:
+    model_string += a.tostring()
+    model_string += "splitter"
 
 del x_train
 del y_train
@@ -510,14 +522,18 @@ m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cnn_keras_step(REAL[],
                                                       SMALLINT[],
                                                       INTEGER,
+                                                      INTEGER[],
+                                                      INTEGER[],
                                                       TEXT,
                                                       BYTEA);
 CREATE AGGREGATE MADLIB_SCHEMA.cnn_keras_step(
-    /* ind_var */             REAL[],
-    /* dep_var */             SMALLINT[],
-    /* seg */                 INTEGER,
-    /* architecture */        TEXT,
-    /* previous_state */      BYTEA
+    /* ind_var */                REAL[],
+    /* dep_var */                SMALLINT[],
+    /* seg */                    INTEGER,
+    /* all_seg_ids */            INTEGER[],
+    /* total_buffers_per_seg */  INTEGER[],
+    /* architecture */           TEXT,
+    /* previous_state */         BYTEA
 )(
     STYPE=BYTEA,
     SFUNC=MADLIB_SCHEMA.cnn_keras_transition,
