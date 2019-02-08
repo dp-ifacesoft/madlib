@@ -154,6 +154,8 @@ class MLPMiniBatchTestCase(unittest.TestCase):
         with self.assertRaises(plpy.PLPYException):
             self.subject.check_if_minibatch_enabled('does not matter', 'still does not matter')
 
+    def test_check_if_minibatch_enabled_works(self):
+        is_mb_enabled = self.subject.check_if_minibatch_enabled('does not matter', 'ind_var')
 
 class AnyStringWith(str):
     def __eq__(self, other):
