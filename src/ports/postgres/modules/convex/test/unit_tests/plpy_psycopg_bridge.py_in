@@ -21,27 +21,27 @@ m4_changequote(`<!', `!>')
 import psycopg2
 
 def __init__(self):
-    conn = None
     cur = None
-	try:
-	    conn = psycopg2.connect("dbname=madlib user=dominovaldano port=15432")
-	    cur = conn.cursor()
+    conn = None
 
-	except (Exception, psycopg2.DatabaseError) as error:
-	    print(error)
-	    if cur is not None:
-	    	cur.close()
-	    if conn is not None:
-			conn.close()
-	else:
-		self.conn = conn
-		self.cur = cur
+    try:
+        conn = psycopg2.connect("dbname=madlib user=dominovaldano port=15432")
+        cur = conn.cursor()
 
+    except (Exception, psycopg2.DatabaseError) as error:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+        raise error
+    else:
+        self.cur = cur
+        self.conn = conn
 
 def error(message):
     raise PLPYException(message)
 
-def execute(query):
+def execute(self,query):
     self.cur.execute(query)
 
 def warning(message):
@@ -58,4 +58,3 @@ class PLPYException(Exception):
 
     def __str__(self):
         return repr(self.message)
-
