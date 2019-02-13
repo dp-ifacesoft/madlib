@@ -14,6 +14,7 @@ from utilities.utilities import extract_keyvalue_params
 from utilities.utilities import _assert
 from utilities.utilities import py_list_to_sql_string
 
+from utilities.validate_args import is_var_valid
 from utilities.validate_args import table_exists
 from utilities.validate_args import columns_exist_in_table
 from utilities.validate_args import table_is_empty
@@ -45,15 +46,13 @@ def _margins_common_validate_args(schema_madlib, source_table, out_table,
             "Margins error: Output table already exists!")
     _assert(not table_exists(out_table + '_summary', only_first_schema=True),
             "Margins error: Output summary table already exists!")
-    _assert(dependent_varname and
-            dependent_varname.strip().lower() not in ('null', ''),
+    _assert(is_var_valid(source_table, dependent_varname),
             "Margins error: Invalid dependent column name!")
-    _assert(independent_varname and
-            independent_varname.strip().lower() not in ('null', ''),
+    _assert(is_var_valid(source_table, independent_varname),
             "Margins error: Invalid independent column name!")
     if grouping_cols:
-        _assert(grouping_cols.strip().lower() not in ('null', ''),
-                "Margins error: Invalid grouping columns name!")
+        _assert(is_var_valid(source_table, grouping_cols),
+                "Margins error: Invalid grouping column name!")
         _assert(columns_exist_in_table(
                 source_table, _string_to_array(grouping_cols), schema_madlib),
                 "Margins error: Grouping column does not exist!")
