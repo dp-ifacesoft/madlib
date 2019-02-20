@@ -36,20 +36,20 @@ m4_include(`SQLCommon.m4')
 
 For Deep Learning based techniques such as Convolutional Neural Nets, the input
 data is mostly images. These images can be represented as an array of numbers
-where all elements are between 0 and 255 in value. It is standard practice
-to divide each of these numbers by 255.0 to normalize the image data.
-minibatch_preprocessor() is for general use-cases, but for deep learning based
-use-cases we provide minibatch_preprocessor_dl() that is light-weight and is
-specific to image datasets. The normalizing constant is parameterized, and can
-be specified based on the kind of image data used.
+where each element defines a pixel intensity. It is standard practice to
+normalize the image data. minibatch_preprocessor() is for general use-cases,
+but for deep learning based use-cases we provide minibatch_preprocessor_dl()
+that is light-weight and is specific to image datasets. The normalizing constant
+is parameterized, and can be specified based on the kind of image data used.
+
 <pre class="syntax">
 minibatch_preprocessor_dl(source_table,
-                        output_table,
-                        dependent_varname,
-                        independent_varname,
-                        buffer_size,
-                        normalizing_const,
-                        dependent_offset
+                          output_table,
+                          dependent_varname,
+                          independent_varname,
+                          buffer_size,
+                          normalizing_const,
+                          dependent_offset
                         )
 </pre>
 
@@ -88,7 +88,7 @@ minibatch_preprocessor_dl(source_table,
   </dd>
 
   <dt>normalizing_const (optional)</dt>
-  <dd>DOUBLE PRECISION, default: 255.0. The normalizing constant to divide
+  <dd>DOUBLE PRECISION, default: 1.0. The normalizing constant to divide
   each value in the independent_varname array by.
   </dd>
 
@@ -345,7 +345,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.minibatch_preprocessor_dl(
     independent_varname     VARCHAR,
     buffer_size             INTEGER
 ) RETURNS VOID AS $$
-  SELECT MADLIB_SCHEMA.minibatch_preprocessor_dl($1, $2, $3, $4, $5, 255.0, NULL);
+  SELECT MADLIB_SCHEMA.minibatch_preprocessor_dl($1, $2, $3, $4, $5, 1.0, NULL);
 $$ LANGUAGE sql VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
@@ -355,7 +355,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.minibatch_preprocessor_dl(
     dependent_varname       VARCHAR,
     independent_varname     VARCHAR
 ) RETURNS VOID AS $$
-  SELECT MADLIB_SCHEMA.minibatch_preprocessor_dl($1, $2, $3, $4, NULL, 255.0, NULL);
+  SELECT MADLIB_SCHEMA.minibatch_preprocessor_dl($1, $2, $3, $4, NULL, 1.0, NULL);
 $$ LANGUAGE sql VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
