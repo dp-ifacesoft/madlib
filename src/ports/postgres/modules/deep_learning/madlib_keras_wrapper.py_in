@@ -63,14 +63,7 @@ def clear_keras_session():
 def compile_and_set_weights(segment_model, compile_params, device_name,
                             previous_state, model_shapes):
     with K.tf.device(device_name):
-
-        optimizers = get_optimizers()
-        (opt_name,final_args,compile_dict) = parse_compile_params(compile_params)
-        optimizer = optimizers[opt_name](**final_args) if final_args else opt_name
-
-        segment_model.compile(optimizer=optimizer,
-                              loss=compile_dict['loss'],
-                              metrics=compile_dict['metrics'])
+        compile_model(segment_model, compile_params)
         _, _, _, model_weights = madlib_keras_serializer.deserialize_weights(
             previous_state, model_shapes)
         segment_model.set_weights(model_weights)
@@ -166,3 +159,11 @@ def get_optimizers():
         if optimizer.__class__ == type and optimizer.__base__ == opt.Optimizer:
             optimizers[n] = optimizer
     return optimizers
+
+def compile_model(model, compile_params):
+    optimizers = get_optimizers()
+    (opt_name,final_args,compile_dict) = parse_compile_params(compile_params)
+    optimizer = optimizers[opt_name](**final_args) if final_args else opt_name
+    model.compile(optimizer=optimizer,
+                         loss=compile_dict['loss'],
+                         metrics=compile_dict['metrics'])
