@@ -114,6 +114,18 @@ def parse_compile_params(str_of_args):
     compile_dict['metrics'] = ast.literal_eval(compile_dict['metrics']) if 'metrics' in compile_dict.keys() else None
     compile_dict['loss_weights'] = ast.literal_eval(compile_dict['loss_weights']) if 'loss_weights' in compile_dict.keys() else None
 
+    opt_name,final_args = parse_optimizer(compile_dict)
+
+    loss_split = compile_dict['loss'].split('.')
+    if (len(loss_split) == 2 and
+        loss_split[0] == 'losses' and
+        loss_split[1] in dir(losses)):
+        compile_dict['loss'] = eval('losses.'+loss_split[1])
+
+    return (opt_name,final_args,compile_dict)
+
+def parse_optimizer(compile_dict):
+
     opt_split = compile_dict['optimizer'].split('(')
     opt_name = opt_split[0]
     optimizers = get_optimizers()
@@ -129,14 +141,8 @@ def parse_compile_params(str_of_args):
         final_args = { key: bool(value) if value == 'True' or value == 'False'
                        else float(value)
                        for key,value in key_value_params.iteritems() }
+    return (opt_name,final_args)
 
-    loss_split = compile_dict['loss'].split('.')
-    if (len(loss_split) == 2 and
-        loss_split[0] == 'losses' and
-        loss_split[1] in dir(losses)):
-        compile_dict['loss'] = eval('losses.'+loss_split[1])
-
-    return (opt_name,final_args,compile_dict)
 
 # Parse the fit parameters into a dictionary.
 def parse_fit_params(str_of_args):
@@ -165,5 +171,5 @@ def compile_model(model, compile_params):
     (opt_name,final_args,compile_dict) = parse_compile_params(compile_params)
     optimizer = optimizers[opt_name](**final_args) if final_args else opt_name
     model.compile(optimizer=optimizer,
-                         loss=compile_dict['loss'],
-                         metrics=compile_dict['metrics'])
+                  loss=compile_dict['loss'],
+                  metrics=compile_dict['metrics'])
