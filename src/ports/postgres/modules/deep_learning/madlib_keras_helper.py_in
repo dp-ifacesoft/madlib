@@ -18,6 +18,7 @@
 # under the License.
 
 import numpy as np
+import plpy
 
 # Prepend a dimension to np arrays using expand_dims.
 def expand_input_dims(input_data, target_type=None):
