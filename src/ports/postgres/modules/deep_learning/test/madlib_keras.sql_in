@@ -243,7 +243,7 @@ SELECT madlib_keras_fit(
     'independent_var',
     'model_arch',
     1,
-    $$ optimizer='Adam(epsilon=None)', loss=losses.categorical_crossentropy, metrics=['accuracy']$$::text,
+    $$ optimizer=Adam(epsilon=None), loss=losses.categorical_crossentropy, metrics=['accuracy']$$::text,
     $$ batch_size=2, epochs=1, verbose=0 $$::text,
     1,
     FALSE,
