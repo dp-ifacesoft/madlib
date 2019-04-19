@@ -145,7 +145,7 @@ def parse_optimizer(compile_dict):
     if len(opt_split) == 1:
         final_args = None
     # If we use optimizer object with no params
-    elif opt_split[1] == ")":
+    elif opt_split[1] == ')':
         final_args = None
     # If we give parameters to the optimizer
     else:
@@ -156,7 +156,7 @@ def parse_optimizer(compile_dict):
 
         final_args = {}
         for key,value in key_value_params.iteritems():
-            if value == 'None'
+            if value == 'None':
                 final_args[key] = None
             elif value == 'True' or value == 'False':
                 final_args[key] = bool(value)
