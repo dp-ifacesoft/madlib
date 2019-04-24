@@ -43,6 +43,7 @@ from madlib_keras_helper import NORMALIZING_CONST_COLNAME
 from madlib_keras_validator import FitInputValidator
 from madlib_keras_wrapper import *
 from keras_model_arch_table import Format
+from keras_model_arch_table import get_model_arch
 
 from utilities.model_arch_info import get_input_shape
 from utilities.model_arch_info import get_num_classes
@@ -50,70 +51,85 @@ from utilities.utilities import is_platform_pg
 from utilities.utilities import madlib_version
 from utilities.validate_args import get_col_value_and_type
 
-def fit(schema_madlib, source_table, model, dependent_varname,
+class fitClass():
+    def __init__(schema_madlib, source_table, model, dependent_varname,
         independent_varname, model_arch_table, model_arch_id, compile_params,
         fit_params, num_iterations, use_gpu = True,
         validation_table=None, name="", description="", **kwargs):
-    fit_validator = FitInputValidator(
-        source_table, validation_table, model, model_arch_table,
-        dependent_varname, independent_varname, num_iterations)
+        self.schema_madlib = schema_madlib
+        self.source_table = source_table
+        self.model = model
+        self.dependent_varname, = dependent_varname
+        self.independent_varname = independent_varname
+        self.model_arch_table = model_arch_table
+        self.model_arch_id = model_arch_id
+        self.compile_params, = compile_params
+        self.fit_params = fit_params
+        self.num_iterations = num_iterations
+        self.use_gpu = bool(use_gpu)
+        self.validation_table = validation_table
+        self.validation_set_provided = bool(validation_table)
+        self.name = name
+        self.description = description
+        self.compile_params_to_pass = "$madlib$" + compile_params + "$madlib$"
+        self.fit_params_to_pass = "$madlib$" + fit_params + "$madlib$"
 
-    start_training_time = datetime.datetime.now()
-    use_gpu = bool(use_gpu)
+        self.master_model = model_from_json(model_arch)
+        self.model_weights = master_model.get_weights()
+        self.input_shape = get_input_shape(model_arch)
+        self.num_classes = get_num_classes(model_arch)
+        self.model_shapes = get_model_shapes(master_model)
+        self.model_arch, self.model_weights_serialized = get_model_arch(model_arch_table, model_arch_id)
 
-    # Get the serialized master model
-    start_deserialization = time.time()
-    model_arch_query = "SELECT {0}, {1} FROM {2} WHERE {3} = {4}".format(
-                                        Format.MODEL_ARCH, Format.MODEL_WEIGHTS,
-                                        model_arch_table, Format.MODEL_ID,
-                                        model_arch_id)
-    query_result = plpy.execute(model_arch_query)
-    if not  query_result:
-        plpy.error("no model arch found in table {0} with id {1}".format(
-            model_arch_table, model_arch_id))
-    query_result = query_result[0]
-    model_arch = query_result[Format.MODEL_ARCH]
-    input_shape = get_input_shape(model_arch)
-    num_classes = get_num_classes(model_arch)
-    fit_validator.validate_input_shapes(source_table, input_shape, 2)
-    if validation_table:
-        fit_validator.validate_input_shapes(validation_table, input_shape, 1)
-    model_weights_serialized = query_result[Format.MODEL_WEIGHTS]
+        self.validate()
+        self.keras_session_stuff_start()
+        self.fit()
+        self.keras_session_stuff_end()
 
-    #TODO: Refactor the pg related logic in a future PR when we think
-    # about making the fit function easier to read and maintain.
+def db_specific_start():
     if is_platform_pg():
         set_keras_session(use_gpu)
+        self.gp_segment_id_col =  -1 
     else:
         # Disable GPU on master for gpdb
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-    gp_segment_id_col =  -1 if is_platform_pg() else 'gp_segment_id'
-    seg_ids_train, rows_per_seg_train = get_rows_per_seg_from_db(source_table)
+        self.gp_segment_id_col = 'gp_segment_id'
+
+def db_specific_end():
+    if is_platform_pg():
+        clear_keras_session()
+
+def validate():
+    fit_validator = FitInputValidator(
+                source_table, validation_table, model, model_arch_table,
+                dependent_varname, independent_varname, num_iterations)
+    fit_validator.validate_input_shapes(source_table, input_shape, 2)
     if validation_table:
-        seg_ids_val, rows_per_seg_val = get_rows_per_seg_from_db(validation_table)
+        fit_validator.validate_input_shapes(validation_table, input_shape, 1)
 
-    # Convert model from json and initialize weights
-    master_model = model_from_json(model_arch)
-    model_weights = master_model.get_weights()
-
-    # Get shape of weights in each layer from model arch
-    model_shapes = []
-    for weight_arr in master_model.get_weights():
-        model_shapes.append(weight_arr.shape)
-
+def initialize_model():
     if model_weights_serialized:
         # If warm start from previously trained model, set weights
         model_weights = madlib_keras_serializer.deserialize_weights_orig(
             model_weights_serialized, model_shapes)
         master_model.set_weights(model_weights)
+    self.initial_model_state = madlib_keras_serializer.serialize_weights(
+            0, 0, 0, model_weights)
 
-    # Construct validation dataset if provided
-    validation_set_provided = bool(validation_table)
+def fit():
+    self.start_training_time = datetime.datetime.now()
+    self.initialize_model()
+    self.train_keras_model()
+    end_training_time = datetime.datetime.now()
+    self.create_output_tables()
+
+def train_keras_model():
     validation_aggregate_accuracy = []; validation_aggregate_loss = []
+    aggregate_loss, aggregate_accuracy, aggregate_runtime = [], [], []
 
-    # Prepare the SQL for running distributed training via UDA
-    compile_params_to_pass = "$madlib$" + compile_params + "$madlib$"
-    fit_params_to_pass = "$madlib$" + fit_params + "$madlib$"
+    seg_ids_train, rows_per_seg_train = get_rows_per_seg_from_db(source_table)
+    if validation_table:
+        seg_ids_val, rows_per_seg_val = get_rows_per_seg_from_db(validation_table)
     run_training_iteration = plpy.prepare("""
         SELECT {schema_madlib}.fit_step(
             {independent_varname}::REAL[],
@@ -130,29 +146,12 @@ def fit(schema_madlib, source_table, model, dependent_varname,
         ) AS iteration_result
         FROM {source_table}
         """.format(**locals()), ["bytea"])
-
-    # Define the state for the model and loss/accuracy storage lists
-    model_state = madlib_keras_serializer.serialize_weights(
-        0, 0, 0, model_weights)
-    aggregate_loss, aggregate_accuracy, aggregate_runtime = [], [], []
-
-    plpy.info("Model architecture size: {}KB".format(len(model_arch)/1024))
-    plpy.info("Model state (serialized) size: {}MB".format(
-        len(model_state)/1024/1024))
-
-    # Run distributed training for specified number of iterations
     for i in range(num_iterations):
         start_iteration = time.time()
         iteration_result = plpy.execute(run_training_iteration, [model_state])[0]['iteration_result']
         end_iteration = time.time()
-        plpy.info("Time for iteration {0}: {1} sec".
-                  format(i + 1, end_iteration - start_iteration))
         aggregate_runtime.append(datetime.datetime.now())
         avg_loss, avg_accuracy, model_state = madlib_keras_serializer.deserialize_iteration_state(iteration_result)
-        plpy.info("Average loss after training iteration {0}: {1}".format(
-            i + 1, avg_loss))
-        plpy.info("Average accuracy after training iteration {0}: {1}".format(
-            i + 1, avg_accuracy))
         if validation_set_provided:
             _, _, _, updated_weights = madlib_keras_serializer.deserialize_weights(
                 model_state, model_shapes)
@@ -171,29 +170,27 @@ def fit(schema_madlib, source_table, model, dependent_varname,
                            'metrics. Expected metrics are loss and accuracy')
             validation_loss = evaluate_result[0]
             validation_accuracy = evaluate_result[1]
-            plpy.info("Validation set accuracy after iteration {0}: {1}".
-                      format(i + 1, validation_accuracy))
             validation_aggregate_accuracy.append(validation_accuracy)
             validation_aggregate_loss.append(validation_loss)
         aggregate_loss.append(avg_loss)
         aggregate_accuracy.append(avg_accuracy)
 
-    end_training_time = datetime.datetime.now()
-
+def create_output_tables():
     final_validation_acc = None
+    version = madlib_version(schema_madlib)
+
     if validation_aggregate_accuracy and len(validation_aggregate_accuracy) > 0:
         final_validation_acc = validation_aggregate_accuracy[-1]
-
     final_validation_loss = None
     if validation_aggregate_loss and len(validation_aggregate_loss) > 0:
         final_validation_loss = validation_aggregate_loss[-1]
-    version = madlib_version(schema_madlib)
     class_values, class_values_type = get_col_value_and_type(
         fit_validator.source_summary_table, CLASS_VALUES_COLNAME)
     norm_const, norm_const_type = get_col_value_and_type(
         fit_validator.source_summary_table, NORMALIZING_CONST_COLNAME)
     dep_vartype = plpy.execute("SELECT {0} AS dep FROM {1}".format(
         DEPENDENT_VARTYPE_COLNAME, fit_validator.source_summary_table))[0]['dep']
+
     create_output_summary_table = plpy.prepare("""
         CREATE TABLE {0}_summary AS
         SELECT
@@ -267,10 +264,6 @@ def fit(schema_madlib, source_table, model, dependent_varname,
         CREATE TABLE {0} AS
         SELECT $1 as model_data""".format(model), ["bytea"])
     plpy.execute(create_output_table, [model_state])
-
-    if is_platform_pg():
-        clear_keras_session()
-
 def get_rows_per_seg_from_db(table_name):
     """
     This function queries the given table and returns the total rows per segment.
