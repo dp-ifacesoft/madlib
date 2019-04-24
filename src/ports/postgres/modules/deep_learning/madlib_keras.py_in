@@ -89,7 +89,7 @@ class fitClass():
 def db_specific_start():
     if is_platform_pg():
         set_keras_session(use_gpu)
-        self.gp_segment_id_col =  -1 
+        self.gp_segment_id_col =  -1
     else:
         # Disable GPU on master for gpdb
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
