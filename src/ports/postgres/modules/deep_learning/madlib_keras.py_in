@@ -316,7 +316,7 @@ def get_images_per_seg(source_table, dependent_varname):
                    for each_segment in total_images_per_seg]
         gp_segment_id_col = 'gp_segment_id'
     return gp_segment_id_col, seg_ids_train, total_images_per_seg
- 
+
 def get_rows_per_seg_from_db(table_name):
     """
     This function queries the given table and returns the total rows per segment.
@@ -395,7 +395,7 @@ def fit_transition(state, ind_var, dep_var, current_seg_id, num_classes,
     else:
         segment_model = SD['segment_model']
         #TODO we don't need to deserialize the weights here.
-        agg_loss, agg_accuracy, agg_image_count, _ = madlib_keras_serializer.deserialize_weights(
+        agg_list_count, agg_list, agg_image_count, _ = madlib_keras_serializer.deserialize_weights(
             state, SD['model_shapes'])
 
     # Prepare the data
@@ -408,15 +408,18 @@ def fit_transition(state, ind_var, dep_var, current_seg_id, num_classes,
         #TODO consider not doing this every time
         fit_params = parse_and_validate_fit_params(fit_params)
         history = segment_model.fit(x_train, y_train, **fit_params)
-        loss = history.history['loss'][0]
-        accuracy = history.history['acc'][0]
+        # loss = history.history['loss'][0]
+        # accuracy = history.history['acc'][0]
     end_fit = time.time()
 
     image_count = len(x_train)
     # Aggregating number of images, loss and accuracy
     agg_image_count += image_count
-    agg_loss += (image_count * loss)
-    agg_accuracy += (image_count * accuracy)
+    # agg_loss += (image_count * loss)
+    # agg_accuracy += (image_count * accuracy)
+
+    for i, key in enumerate(history.history.keys()):
+        agg_dict[key] = agg_list[i] + (image_count * history.history[key][0])
 
     with K.tf.device(device_name):
         updated_weights = segment_model.get_weights()
@@ -445,7 +448,7 @@ def fit_transition(state, ind_var, dep_var, current_seg_id, num_classes,
             .format(agg_image_count,total_images))
 
     new_model_state = madlib_keras_serializer.serialize_weights(
-            agg_loss, agg_accuracy, agg_image_count, updated_weights)
+            len(agg_dict.keys()), agg_dict.values(), agg_image_count, updated_weights)
 
 
     del x_train
@@ -545,10 +548,10 @@ def get_loss_acc_from_keras_eval(schema_madlib, table, dependent_varname,
                                             {independent_varname},
                                             $MAD${model_arch}$MAD$,
                                             $1, {compile_params},
-                                            {use_gpu}, 
-                                            ARRAY{seg_ids_val}, 
+                                            {use_gpu},
+                                            ARRAY{seg_ids_val},
                                             ARRAY{rows_per_seg_val},
-                                            {gp_segment_id_col})) as loss_acc 
+                                            {gp_segment_id_col})) as loss_acc
         from {table}
     ) q""".format(**locals()), ["bytea"])
     res = plpy.execute(evaluate_query, [model_data])
