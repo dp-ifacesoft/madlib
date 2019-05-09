@@ -37,6 +37,7 @@ from utilities import _assert
 from utilities import split_quoted_delimited_str
 from utilities import strip_end_quotes
 from utilities import extract_keyvalue_params
+from utilities.utilities import unique_string
 from validate_args import table_exists
 from validate_args import columns_exist_in_table
 from validate_args import table_is_empty
@@ -137,7 +138,7 @@ def pivot(schema_madlib, source_table, out_table, index, pivot_cols,
         validate_output_types(source_table, agg_dict, is_array_output)
 
         # Find the distinct values of pivot_cols
-        array_agg_str = ', '.join("array_agg(DISTINCT {pcol}) AS {pcol}_values".
+        distinct_pcol_values_sql = ', '.join("DISTINCT {pcol} AS {pcol}_values".
                                   format(pcol=pcol) for pcol in pcols)
         if keep_null:
             # Some platforms don't include NULL values as part of the array_agg(DISTINCT ...)
@@ -147,6 +148,14 @@ def pivot(schema_madlib, source_table, out_table, index, pivot_cols,
                 "AS {pcol}_isnull".format(pcol=pcol) for pcol in pcols)
         else:
             null_str = ""
+
+        distinct_values_table = unique_string(desp='distinct_values_table')
+        plpy.execute(""" CREATE TABLE {distinct_values_table} AS
+                         SELECT {distinct_pcol_values_sql} {null_str}
+                         FROM {source_table}
+                     """.format(**locals()))
+        array_agg_str = ', '.join("array_agg({pcol}_values) AS {pcol}_values".
+                                  format(pcol=pcol) for pcol in pcols)
         distinct_values = plpy.execute("SELECT {0} {1} FROM {2}".
                                        format(array_agg_str, null_str, source_table))[0]
 
