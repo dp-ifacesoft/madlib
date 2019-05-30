@@ -435,6 +435,7 @@ def fit_transition(state, dependent_var, independent_var, model_architecture,
                    compile_params, fit_params, current_seg_id, seg_ids,
                    images_per_seg, gpus_per_host, segments_per_host,
                    prev_serialized_weights, **kwargs):
+    return state
     if not independent_var or not dependent_var:
         return state
 
