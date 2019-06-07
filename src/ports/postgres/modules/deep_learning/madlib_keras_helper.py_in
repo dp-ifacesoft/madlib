@@ -22,12 +22,16 @@ from utilities.utilities import is_platform_pg
 import plpy
 
 # Prepend a dimension to np arrays using expand_dims.
-def expand_input_dims(input_data, target_type=None):
-    input_data = np.array(input_data)
+def expand_input_dims(input_data):
+    input_data = np_array_float32(input_data)
     input_data = np.expand_dims(input_data, axis=0)
-    if target_type:
-        input_data = input_data.astype(target_type)
     return input_data
+
+def np_array_float32(var):
+    return np.array(var, dtype=np.float32)
+
+def np_array_int16(var):
+    return np.array(var, dtype=np.int16)
 
 def strip_trailing_nulls_from_class_values(class_values):
     """
@@ -160,3 +164,7 @@ METRIC_TYPE_COLNAME = "metrics_type"
 # MADLIB-1300 Adding these variables for DL only at this time.
 MINIBATCH_OUTPUT_DEPENDENT_COLNAME_DL = "dependent_var"
 MINIBATCH_OUTPUT_INDEPENDENT_COLNAME_DL = "independent_var"
+
+## variable types
+FLOAT32_SQL_TYPE = 'REAL'
+SMALLINT_SQL_TYPE = 'SMALLINT'

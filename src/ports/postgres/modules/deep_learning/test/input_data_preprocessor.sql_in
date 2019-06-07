@@ -191,7 +191,7 @@ SELECT training_preprocessor_dl(
   'x',
   4,
   5);
-SELECT assert(pg_typeof(dependent_var) = 'integer[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
+SELECT assert(pg_typeof(dependent_var) = 'smallint[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(array_upper(dependent_var, 2) = 2, 'Incorrect one-hot encode dimension') FROM
   data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(SUM(y) = 1, 'Incorrect one-hot encode format') FROM (SELECT buffer_id, UNNEST(dependent_var[1:1]) as y FROM data_preprocessor_input_batch) a WHERE buffer_id = 0;
@@ -229,7 +229,7 @@ SELECT training_preprocessor_dl(
   'x',
   4,
   5);
-SELECT assert(pg_typeof(dependent_var) = 'integer[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
+SELECT assert(pg_typeof(dependent_var) = 'smallint[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(array_upper(dependent_var, 2) = 3, 'Incorrect one-hot encode dimension') FROM
   data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(SUM(y) = 1, 'Incorrect one-hot encode format') FROM (SELECT buffer_id, UNNEST(dependent_var[1:1]) as y FROM data_preprocessor_input_batch) a WHERE buffer_id = 0;
@@ -260,7 +260,7 @@ SELECT training_preprocessor_dl(
   'x',
   4,
   5);
-SELECT assert(pg_typeof(dependent_var) = 'integer[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
+SELECT assert(pg_typeof(dependent_var) = 'smallint[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(array_upper(dependent_var, 2) = 3, 'Incorrect one-hot encode dimension') FROM
   data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(SUM(y) = 1, 'Incorrect one-hot encode format') FROM (SELECT buffer_id, UNNEST(dependent_var[1:1]) as y FROM data_preprocessor_input_batch) a WHERE buffer_id = 0;
@@ -279,7 +279,7 @@ SELECT training_preprocessor_dl(
   'x',
   4,
   5);
-SELECT assert(pg_typeof(dependent_var) = 'integer[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
+SELECT assert(pg_typeof(dependent_var) = 'smallint[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(array_upper(dependent_var, 2) = 2, 'Incorrect one-hot encode dimension') FROM
   data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(relative_error(SUM(y), SUM(y4)) < 0.000001, 'Incorrect one-hot encode value') FROM (SELECT UNNEST(dependent_var) AS y FROM data_preprocessor_input_batch) a, (SELECT UNNEST(y4) as y4 FROM data_preprocessor_input) b;
@@ -309,7 +309,7 @@ SELECT training_preprocessor_dl(
   'x',
   4,
   5);
-SELECT assert(pg_typeof(dependent_var) = 'integer[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
+SELECT assert(pg_typeof(dependent_var) = 'smallint[]'::regtype, 'One-hot encode doesn''t convert into integer array format') FROM data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(array_upper(dependent_var, 2) = 2, 'Incorrect one-hot encode dimension') FROM
   data_preprocessor_input_batch WHERE buffer_id = 0;
 SELECT assert(relative_error(SUM(y), SUM(y5)) < 0.000001, 'Incorrect one-hot encode value') FROM (SELECT UNNEST(dependent_var) AS y FROM data_preprocessor_input_batch) a, (SELECT UNNEST(y5) as y5 FROM data_preprocessor_input) b;
