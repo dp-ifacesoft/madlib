@@ -63,7 +63,7 @@ from utilities.utilities import create_cols_from_array_sql_string
 
 
 
-@MinWarning("error")
+@MinWarning("warning")
 def mlp(schema_madlib, source_table, output_table, independent_varname,
         dependent_varname, hidden_layer_sizes, optimizer_param_str, activation,
         is_classification, weights, warm_start, verbose=False, grouping_col=""):
@@ -201,6 +201,7 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
     # Need layers sizes before validating for warm_start
     layer_sizes = [num_input_nodes] + hidden_layer_sizes + [num_output_nodes]
     col_grp_key = unique_string(desp='col_grp_key')
+    # plpy.info("{0} {1}".format(warm_start, grouping_col))
     if warm_start:
         coeff = _validate_warm_start(output_table, summary_table,
                                      standardization_table, independent_varname,
@@ -218,6 +219,7 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                 WHERE {join_condition} AND
                       array_to_string(ARRAY[{grouping_str}], ',') = {col_grp_key}
                 """.format(**locals())
+            # plpy.info(start_coeff)
         else:
             start_coeff = PY2SQL(coeff, array_type="DOUBLE PRECISION")
     else:
@@ -1052,7 +1054,7 @@ def mlp_predict(schema_madlib, model_table, data_table, id_col_name,
             intermediate_col = unique_string()
             if classes:
                 score_format = create_cols_from_array_sql_string(
-                    classes, intermediate_col, 'prob', 'double precision', False, 'MLP') 
+                    classes, intermediate_col, 'prob', 'double precision', False, 'MLP')
             else:
                 # Case when the training step did not have to one-hot encode
                 # the dependent var.

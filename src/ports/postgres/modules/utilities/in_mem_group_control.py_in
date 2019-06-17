@@ -571,6 +571,15 @@ class GroupIterationController:
             select_rel_state=group_param.select_rel_state,
             select_n_tuples=group_param.select_n_tuples,
             **self.kwargs)
+        # plpy.info(plpy.execute(""" select (
+        #           {start_coeff})
+        #           FROM (
+        #         SELECT *,
+        #             array_to_string(ARRAY[{grouping_str}], ',') AS {col_grp_key}
+        #         FROM {rel_source}
+        #     ) AS {as_rel_source}
+        #     """.format(**self.kwargs)))
+        # plpy.info(run_sql)
 
         update_plan = plpy.prepare(run_sql,
                                    ["text[]", group_param.grouped_state_type,

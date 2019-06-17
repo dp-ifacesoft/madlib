@@ -221,6 +221,7 @@ mlp_minibatch_transition::run(AnyType &args) {
                     }
                     layer_start += state.model.u[k].rows() * state.model.u[k].cols();
                 }
+                // elog(WARNING, "%f, %f", state.model.u[0](0,0), state.model.u[0](1,0));
             } else {
                 // initialize the model with appropriate coefficients
                 state.model.initialize(
