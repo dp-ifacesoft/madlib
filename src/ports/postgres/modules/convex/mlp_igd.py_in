@@ -319,7 +319,7 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                         """
                 else:
                     train_sql = """
-                        {schema_madlib}.mlp_igd_step(
+                        f1(
                             ({col_ind_var})::DOUBLE PRECISION[],
                             ({dependent_varname})::DOUBLE PRECISION[],
                             {rel_state}.{col_grp_state},

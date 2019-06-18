@@ -587,7 +587,7 @@ class GroupIterationController:
         res_tuples = plpy.execute(update_plan, [self.new_states.keys,
                                                 self.new_states.values,
                                                 self.grp_to_n_tuples.keys(),
-                                                self.grp_to_n_tuples.values()])
+                                                 self.grp_to_n_tuples.values()]))
 
         col_grp_state = self.kwargs['col_grp_state']
         col_grp_key = self.kwargs['col_grp_key']
