@@ -51,7 +51,7 @@ from utilities.validate_args import is_col_array
 from utilities.validate_args import is_var_valid
 from utilities.validate_args import quote_ident
 
-WEIGHT_FOR_ZERO_DIST = 1e6
+WEIGHT_FOR_ZERO_DIST = 1e9
 BRUTE_FORCE = 'brute_force'
 KD_TREE = 'kd_tree'
 
@@ -313,7 +313,7 @@ def knn_kd_tree(schema_madlib, kd_out, test_source, test_column_name, test_id,
 def _create_interim_tbl(schema_madlib, point_source, point_column_name, point_id,
     label_name, test_source, test_column_name, test_id, interim_table, k,
     fn_dist, test_id_temp, train_id, dist_inverse, comma_label_out_alias,
-    label_out, r_id, kd_out, train, t_col_name, **kwargs):
+    label_out, r_id, kd_out, train, t_col_name, dist, **kwargs):
     """
         KNN function to create the interim table
         Args:
@@ -357,6 +357,7 @@ def _create_interim_tbl(schema_madlib, point_source, point_column_name, point_id
             @param kd_out
             @param train
             @param t_col_name
+            @param dist
     """
     with MinWarning("error"):
         # If r_id is None, we are using the brute force algorithm.
@@ -368,7 +369,6 @@ def _create_interim_tbl(schema_madlib, point_source, point_column_name, point_id
         y_temp_table = unique_string(desp='y_temp_table')
         test = unique_string(desp='test')
         r = unique_string(desp='r')
-        dist = unique_string(desp='dist')
 
         if not is_brute_force:
             point_source = kd_out
@@ -389,6 +389,7 @@ def _create_interim_tbl(schema_madlib, point_source, point_column_name, point_id
                                 (PARTITION BY {test_id_temp} ORDER BY {dist}) AS {r},
                            {test_id_temp},
                            {train_id},
+                           {dist},
                            CASE WHEN {dist} = 0.0 THEN {weight_for_zero_dist}
                                 ELSE 1.0 / {dist}
                            END AS {dist_inverse}
@@ -397,7 +398,7 @@ def _create_interim_tbl(schema_madlib, point_source, point_column_name, point_id
                         SELECT {select_sql}
                                {test}.{test_id} AS {test_id_temp},
                                {train}.{point_id} AS {train_id},
-                               {fn_dist}({p_col_name}, {t_col_name}) AS {dist}
+                               ABS({fn_dist}({p_col_name}, {t_col_name})) AS {dist}
                                {label_out}
                         FROM
                             (
@@ -523,6 +524,7 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
         dist_inverse = unique_string(desp='dist_inverse')
         dim = unique_string(desp='dim')
         t_col_name = unique_string(desp='t_col_name')
+        dist = unique_string(desp='dist')
 
         if not fn_dist:
             fn_dist = '{0}.squared_dist_norm2'.format(schema_madlib)
@@ -611,7 +613,9 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
 
         if output_neighbors:
             knn_neighbors = (", array_agg(knn_temp.{train_id} ORDER BY "
-                             "knn_temp.{dist_inverse} DESC) AS k_nearest_neighbours ").format(**locals())
+                             "knn_temp.{dist_inverse} DESC) AS k_nearest_neighbours "
+                             ", array_agg(knn_temp.{dist} ORDER BY "
+                             "knn_temp.{dist_inverse} DESC) AS k_nearest_distances").format(**locals())
         else:
             knn_neighbors = ''
 
@@ -635,7 +639,8 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
                             point_id, label_name, test_data, test_column_name,
                             test_id, interim_table, k, fn_dist, test_id_temp,
                             train_id, dist_inverse, comma_label_out_alias,
-                            label_out, r_id, kd_output_table, train, t_col_name)
+                            label_out, r_id, kd_output_table, train, t_col_name,
+                            dist)
         output_sql = """
             CREATE TABLE {output_table} AS
                 {view_def}
